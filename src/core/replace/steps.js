@@ -14,7 +14,7 @@ const fs = require('node:fs');
 const path = require('node:path');
 const P = require('../provision/steps');
 const { isIpv4 } = require('../provision/validate');
-const { buildReplacementConfig, usedInbounds } = require('./entry-config');
+const { buildReplacementConfig, usedInbounds, validateInventory } = require('./entry-config');
 
 const SERVER_ROOT = path.join(__dirname, '../../../server');
 const readScript = (rel) => fs.readFileSync(path.join(SERVER_ROOT, rel), 'utf8');
@@ -28,6 +28,7 @@ function checkPlan(plan) {
   if (!isIpv4(plan?.target?.host)) throw new Error(i18n.t('repl.newIpv4'));
   if (!isIpv4(plan?.exit?.host)) throw new Error(i18n.t('repl.exitIpv4'));
   if (!plan.exit.keyPath) throw new Error(i18n.t('repl.exitNoKey'));
+  validateInventory(plan.source.inventory);
   if (!usedInbounds(plan.source.inventory).length) throw new Error(i18n.t('repl.noClients'));
 }
 

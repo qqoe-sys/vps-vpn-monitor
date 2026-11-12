@@ -17,8 +17,8 @@ const inventory = {
 async function main() {
   let subs = defaultSubs();
   subs.site.domain = 'example.org';
-  subs = addPerson(subs, 'Вася', 'demo1');
-  subs = addPerson(subs, 'Без ключа', 'nokey');
+  subs = addPerson(subs, 'Alice', 'demo1');
+  subs = addPerson(subs, 'No key', 'nokey');
   const { files } = await buildSite(subs, inventory, { host: '203.0.113.10' });
 
   http.createServer((req, res) => {
@@ -30,7 +30,7 @@ async function main() {
     res.writeHead(200, { 'Content-Type': r.kind === 'sub' ? 'text/plain; charset=utf-8' : 'text/html; charset=utf-8' });
     res.end(body);
   }).listen(PORT, '127.0.0.1', () => {
-    console.log(`Заглушка: http://127.0.0.1:${PORT}/`);
+    console.log(`Stub: http://127.0.0.1:${PORT}/`);
     for (const p of subs.people) console.log(`${p.name}: http://127.0.0.1:${PORT}/s/${p.token}/`);
   });
 }

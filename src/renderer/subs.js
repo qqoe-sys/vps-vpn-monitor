@@ -8,7 +8,7 @@ const OS_NAMES = { android: 'Android', ios: 'iOS', windows: 'Windows', linux: 'L
 
 function subsMessage() {
   const m = subsState.msg;
-  return m ? `<p class="key-msg ${m.error ? 'error' : ''}">${esc(m.text)}</p>` : '';
+  return m ? `<p class="key-msg ${m.error ? 'error' : ''}">${escMsg(m.text)}</p>` : '';
 }
 
 function peopleTable(d) {
@@ -69,7 +69,7 @@ function renderSubs() {
   $('subs').innerHTML = `<h2>${t('nav.subs')}</h2>
     ${subsMessage()}
     ${d.pending ? `<p class="key-msg error">${t('subs.pending')}</p>` : ''}
-    ${d.warning ? `<p class="key-msg error">${esc(d.warning)}</p>` : ''}
+    ${d.warning ? `<p class="key-msg error">${escMsg(d.warning)}</p>` : ''}
     <article class="card">
       <div class="card-title">${t('subs.people')}</div>
       <form class="key-form" data-subs-add>

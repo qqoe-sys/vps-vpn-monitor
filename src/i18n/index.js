@@ -46,7 +46,7 @@
   function tr(lang, key, params) {
     const s = lookup(lang, key) ?? lookup(FALLBACK, key) ?? key;
     if (!params) return s;
-    return s.replace(/\{(\w+)\}/g, (m, name) => (params[name] === undefined ? m : String(params[name])));
+    return s.replace(/\{(\w+)\}/g, (m, name) => (params[name] === undefined ? '?' : String(params[name])));
   }
 
   const t = (key, params) => tr(current, key, params);

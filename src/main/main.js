@@ -291,8 +291,9 @@ function registerIpc() {
   ipcMain.handle('servers:get', () => [...latest.values()]);
   ipcMain.handle('lang:get', () => i18n.getLang());
   ipcMain.handle('lang:set', (_e, lang) => {
-    const chosen = i18n.setLang(lang);
+    const chosen = i18n.LANGS.includes(lang) ? lang : i18n.getLang();
     saveSettings(settingsFile, { ...loadSettings(settingsFile, app.getLocale()), lang: chosen });
+    i18n.setLang(chosen);
     // Тексты проблем строит главный процесс: пересчитываем их сразу на новом языке.
     for (const [id, m] of monitors) {
       if (!config.servers.find((s) => s.id === id)?.noAccess) Promise.resolve(m.pollNow()).catch(() => {});
@@ -385,6 +386,8 @@ app.whenReady().then(() => {
   // Разрешаем только буфер обмена: без него не работает вставка в терминал.
   const allowed = new Set(['clipboard-read', 'clipboard-sanitized-write']);
   session.defaultSession.setPermissionRequestHandler((_wc, perm, done) => done(allowed.has(perm)));
+  // Синхронные проверки разрешений (navigator.permissions и т.п.) — тот же короткий список.
+  session.defaultSession.setPermissionCheckHandler((_wc, perm) => allowed.has(perm));
   storeFile = path.join(app.getPath('userData'), 'traffic.json');
   store = loadStore(storeFile);
   configureTrust(path.join(app.getPath('userData'), 'known_hosts'));

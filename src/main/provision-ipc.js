@@ -42,7 +42,7 @@ function registerProvisionIpc(app) {
     const { response } = await dialog.showMessageBox(win(), {
       type: 'question',
       buttons: [i18n.t('main.cancel'), i18n.t('ipc.trust')],
-      defaultId: 1,
+      defaultId: 0, // по Enter — «Отмена»: незнакомому ключу доверяют только осознанным нажатием
       cancelId: 0,
       title: i18n.t('setup.newServer'),
       message: i18n.t('ipc.connectQ', { host }),

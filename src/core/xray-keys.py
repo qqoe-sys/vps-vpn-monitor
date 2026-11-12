@@ -107,10 +107,20 @@ def delete_key(config, name):
         raise Refused('@E:no_such_key')
 
 
-def healthy(config):
+def restarts():
+    out = run('systemctl', 'show', 'xray', '-p', 'NRestarts', '--value').stdout.strip()
+    return int(out) if out.isdigit() else -1
+
+
+def healthy(config, need=5):
+    # Одного «active» мало: в цикле падений служба на секунду бывает active между перезапусками.
+    # Требуем need опросов подряд (раз в секунду) без роста счётчика перезапусков и все порты слушаются.
     time.sleep(2)
-    if run('systemctl', 'is-active', 'xray').stdout.strip() != 'active':
-        return False
+    base = restarts()
+    for _ in range(need):
+        if run('systemctl', 'is-active', 'xray').stdout.strip() != 'active' or restarts() != base:
+            return False
+        time.sleep(1)
     listening = run('ss', '-tlnH').stdout
     return all(re.search(r':%d\s' % i['port'], listening) for i in key_inbounds(config))
 
@@ -139,7 +149,10 @@ def apply_config(config, path, dry):
     if not healthy(config):
         shutil.copy2(backup, path)
         run('systemctl', 'restart', 'xray')
-        raise Refused('@E:xray_rolled_back')
+        with open(path) as f:
+            restored = json.load(f)
+        # После отката проверяем, что старый конфиг действительно поднялся, и честно говорим, если нет.
+        raise Refused('@E:xray_rolled_back' if healthy(restored) else '@E:xray_rollback_still_down')
 
 
 def main():

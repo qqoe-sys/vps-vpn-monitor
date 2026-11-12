@@ -7,6 +7,7 @@
 //   s/<код>/index.html    — страница человека (для браузера)
 //   s/<код>/sub           — подписка: base64 от одной XHTTP-ссылки (для Happ)
 
+const crypto = require('node:crypto');
 const i18n = require('../i18n');
 const QRCode = require('qrcode');
 const { TOKEN_RE } = require('./subs-config');
@@ -126,9 +127,21 @@ function renderPage({ subs, person, link, url, qrSub, qrKey }) {
 ${appsBlock(subs.apps, lang)}
 <div class="card"><b>${tx('site.trouble')}</b>
 <details><summary>${tx('site.manualKey')}</summary><div class="qr">${qrKey}</div><code id="key">${esc(link)}</code>${copy('key')}</details></div>
-</main><script>document.querySelectorAll('[data-copy]').forEach(function(b){b.onclick=function(){
-navigator.clipboard.writeText(document.getElementById(b.dataset.copy).textContent).then(function(){b.textContent=${JSON.stringify(i18n.tr(lang, 'site.copied')).replace(/</g, '\\u003c')}})}})</script>
+</main><script>${copyScript(lang)}</script>
 </body></html>`;
+}
+
+// Единственный скрипт страницы — кнопки «Скопировать». Вынесен в функцию: его хеш нужен для CSP в Caddyfile.
+function copyScript(lang) {
+  const copied = JSON.stringify(i18n.tr(lang, 'site.copied')).replace(/</g, '\\u003c');
+  return `document.querySelectorAll('[data-copy]').forEach(function(b){b.onclick=function(){
+navigator.clipboard.writeText(document.getElementById(b.dataset.copy).textContent).then(function(){b.textContent=${copied}})}})`;
+}
+
+// CSP страницы: ничего внешнего не грузим, скрипт разрешён только наш (по sha256), фреймы и формы запрещены.
+function contentSecurityPolicy() {
+  const hashes = i18n.LANGS.map((lang) => `'sha256-${crypto.createHash('sha256').update(copyScript(lang)).digest('base64')}'`);
+  return `default-src 'none'; style-src 'unsafe-inline'; img-src data:; script-src ${hashes.join(' ')}; base-uri 'none'; form-action 'none'; frame-ancestors 'none'`;
 }
 
 function renderStub(lang) {
@@ -171,6 +184,9 @@ ${domain}:${port} {
 	header -Server
 	header Referrer-Policy no-referrer
 	header X-Robots-Tag "noindex, nofollow"
+	header X-Content-Type-Options nosniff
+	header Strict-Transport-Security "max-age=31536000"
+	header Content-Security-Policy "${contentSecurityPolicy()}"
 
 	@sub path_regexp tsub ^/s/(${TOKEN_PART})/sub$
 	@clientua {

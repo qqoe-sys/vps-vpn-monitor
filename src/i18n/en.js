@@ -456,6 +456,7 @@
   'repl.linkNotTcp': 'the link uses {net}, but TCP is required',
   'repl.probeFailed': 'The path through the exit does not work: {list}',
   'repl.noChecks': 'no checks',
+  'repl.badInventory': 'The old entry client list looks corrupted or tampered with ({what}): replacement stopped',
   'repl.noSource': 'Neither a connection to the old entry nor a saved client copy is available',
 
   // --- Server script codes (@E:code|arg0|arg1 → {0}, {1}) ---

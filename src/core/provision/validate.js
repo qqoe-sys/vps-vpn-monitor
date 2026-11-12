@@ -45,4 +45,4 @@ function validatePlan(plan) {
   }
 }
 
-module.exports = { validatePlan, serverIdFor, isIpv4 };
+module.exports = { validatePlan, serverIdFor, isIpv4, checkPort, checkPorts };

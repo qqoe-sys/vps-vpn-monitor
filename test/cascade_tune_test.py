@@ -34,7 +34,7 @@ def entry_cfg():
             {'tag': 'to-germany', 'protocol': 'vless',
              'settings': {'vnext': [{'address': EXIT_IP, 'port': 443, 'users': [{'id': 'L1', 'encryption': 'none', 'flow': ''}]}]},
              'streamSettings': {'network': 'tcp', 'security': 'reality',
-                                'realitySettings': {'fingerprint': 'firefox', 'serverName': 'www.bmw.de', 'publicKey': 'PUB', 'shortId': 'cd'}}},
+                                'realitySettings': {'fingerprint': 'firefox', 'serverName': 'exit-mask.example.org', 'publicKey': 'PUB', 'shortId': 'cd'}}},
             {'tag': 'direct', 'protocol': 'freedom'},
         ],
     }
@@ -43,7 +43,7 @@ def entry_cfg():
 def exit_cfg():
     return {'inbounds': [{'tag': 'inbound-443', 'protocol': 'vless', 'port': 443,
                           'settings': {'clients': [{'id': 'L1', 'flow': ''}], 'decryption': 'none'},
-                          'streamSettings': {'network': 'tcp', 'security': 'reality', 'realitySettings': reality('www.bmw.de:443', ['www.bmw.de'])}}],
+                          'streamSettings': {'network': 'tcp', 'security': 'reality', 'realitySettings': reality('exit-mask.example.org:443', ['exit-mask.example.org'])}}],
             'outbounds': [{'tag': 'direct', 'protocol': 'freedom'}]}
 
 
