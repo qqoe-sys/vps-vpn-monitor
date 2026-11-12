@@ -18,8 +18,8 @@ chmod 755 /usr/local/lib/vpsmon/collector.py
 ${history ? `if [ ! -f /var/lib/vpsmon/traffic.json ]; then
   echo ${b64(JSON.stringify(history))} | base64 -d > /var/lib/vpsmon/traffic.json
   chmod 600 /var/lib/vpsmon/traffic.json
-  echo 'история из приложения перенесена'
-fi` : "echo 'истории в приложении нет, учёт начнётся с нуля'"}
+  echo '@E:col_history_moved'
+fi` : "echo '@E:col_history_none'"}
 cat > /etc/systemd/system/vpsmon-collector.service <<'UNIT'
 [Unit]
 Description=VPS-VPN Monitor traffic collector
@@ -48,7 +48,7 @@ UNIT
 systemctl daemon-reload
 systemctl enable --now vpsmon-collector.timer
 systemctl start vpsmon-collector.service
-echo "таймер: $(systemctl is-active vpsmon-collector.timer), последний запуск: $(systemctl show vpsmon-collector.service -p Result --value)"
+echo "@E:col_timer|$(systemctl is-active vpsmon-collector.timer)|$(systemctl show vpsmon-collector.service -p Result --value)"
 ls -l /var/lib/vpsmon/traffic.json
 `;
 }

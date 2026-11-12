@@ -1,7 +1,7 @@
 {
   "name": "vps-vpn-monitor",
   "productName": "VPS-VPN Monitor",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "Настольное приложение для Windows: настройка и мониторинг VPS с Xray, каскад вход → выход и замена входного сервера без смены выходного IP",
   "author": "qqoe-sys",
   "license": "MIT",
@@ -17,7 +17,7 @@
   "private": true,
   "scripts": {
     "start": "electron .",
-    "test": "node --test test/provision.test.js test/core.test.js test/subs.test.js test/replace.test.js",
+    "test": "node --test test/provision.test.js test/core.test.js test/subs.test.js test/replace.test.js test/i18n.test.js",
     "test:py": "python test/deploy_test.py && python test/exit_link_test.py && python test/cascade_tune_test.py && python test/cascade_safety_test.py",
     "dist": "electron-builder --win nsis"
   },

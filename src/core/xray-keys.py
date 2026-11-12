@@ -20,7 +20,7 @@ def config_path():
     out = run('systemctl', 'show', 'xray', '-p', 'ExecStart', '--value').stdout
     m = re.search(r'(?:-c|-config|--config)[ =](\S+)', out)
     if not m:
-        raise Refused('Не найден путь к конфигу Xray')
+        raise Refused('@E:xray_config_missing')
     return m.group(1)
 
 
@@ -76,15 +76,15 @@ def inventory(config):
 
 def add_key(config, name, uuid, profile=None):
     if not NAME_RE.match(name) or SUFFIX_RE.search(name):
-        raise Refused('Недопустимое имя ключа')
+        raise Refused('@E:bad_key_name')
     inbounds = key_inbounds(config)
     # Имя должно быть уникально на всём сервере, а ключ добавляется только в свой режим.
     if any(key_name(c.get('email', '')) == name for i in inbounds for c in i['settings']['clients']):
-        raise Refused('Ключ с таким именем уже есть')
+        raise Refused('@E:key_exists')
     if profile:
         inbounds = [i for i in inbounds if str(i.get('tag', '')).startswith(profile + '-')]
     if not inbounds:
-        raise Refused('На сервере нет подходящих входов VLESS')
+        raise Refused('@E:no_vless_inbounds')
     for ib in inbounds:
         clients = ib['settings']['clients']
         # Копируем поля существующего клиента (например flow), меняем только id и email.
@@ -101,10 +101,10 @@ def delete_key(config, name):
         if len(keep) != len(clients):
             found = True
         if not keep:
-            raise Refused('Нельзя удалить последний ключ на сервере')
+            raise Refused('@E:last_key')
         ib['settings']['clients'] = keep
     if not found:
-        raise Refused('Такого ключа нет')
+        raise Refused('@E:no_such_key')
 
 
 def healthy(config):
@@ -125,7 +125,7 @@ def apply_config(config, path, dry):
         os.chmod(tmp, st.st_mode & 0o777)
         test = run('xray', 'run', '-test', '-config', tmp)
         if test.returncode != 0:
-            raise Refused('Xray отверг новый конфиг, сервер не изменён')
+            raise Refused('@E:xray_rejected_config')
         if dry:
             return
         backup = '%s.bak.vpsmon.%s' % (path, time.strftime('%Y%m%dT%H%M%S'))
@@ -139,7 +139,7 @@ def apply_config(config, path, dry):
     if not healthy(config):
         shutil.copy2(backup, path)
         run('systemctl', 'restart', 'xray')
-        raise Refused('Xray не поднялся с новым конфигом, выполнен откат на бэкап')
+        raise Refused('@E:xray_rolled_back')
 
 
 def main():
@@ -158,7 +158,7 @@ def main():
         elif action == 'delete':
             delete_key(config, REQUEST['name'])
         else:
-            raise Refused('Неизвестное действие')
+            raise Refused('@E:unknown_action')
         apply_config(config, path, REQUEST.get('dry', False))
     return inventory(config)
 
@@ -168,4 +168,4 @@ try:
 except Refused as e:
     print(json.dumps({'ok': False, 'error': str(e)}, ensure_ascii=False))
 except Exception as e:
-    print(json.dumps({'ok': False, 'error': 'Ошибка на сервере: %s' % type(e).__name__}, ensure_ascii=False))
+    print(json.dumps({'ok': False, 'error': '@E:server_exception|%s' % type(e).__name__}, ensure_ascii=False))

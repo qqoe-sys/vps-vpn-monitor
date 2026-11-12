@@ -3,6 +3,7 @@
 // Лежит в %APPDATA%\vps-monitor\subscriptions.json только на ПК владельца.
 // Коды ссылок — секреты: их нельзя писать в логи и сообщения об ошибках.
 
+const i18n = require('../i18n');
 const crypto = require('node:crypto');
 const fs = require('node:fs');
 const path = require('node:path');
@@ -22,32 +23,34 @@ function validPort(port) {
   return Number.isInteger(port) && port >= 1 && port <= 65535 && !RESERVED_PORTS.includes(port);
 }
 
-function defaultSubs() {
+// Инструкции и название по умолчанию — на языке сайта (site.lang).
+function defaultApps(lang) {
+  return Object.fromEntries(OS_LIST.map((os) => [os, {
+    name: 'Happ', url: HAPP_URL, steps: i18n.tr(lang, `site.steps.${os}`).split('\n'),
+  }]));
+}
+
+function defaultSubs(lang = 'ru') {
   return {
     // Вход и выход не заданы: их подставит resolveCascade по списку серверов пользователя.
-    site: { domain: null, host: null, port: 8443, title: 'Доступ', updateHours: 12 },
+    site: { domain: null, host: null, port: 8443, title: i18n.tr(lang, 'site.defaultTitle'), updateHours: 12, lang },
     cascade: { entry: null, exit: null },
-    apps: {
-      android: {
-        name: 'Happ', url: HAPP_URL,
-        steps: ['Скачай Happ для Android с сайта по кнопке и установи APK.', 'Нажми «Добавить в Happ» выше или скопируй ссылку и вставь её в Happ (кнопка «+»).', 'Включи подключение большой кнопкой.'],
-      },
-      ios: {
-        name: 'Happ', url: HAPP_URL,
-        steps: ['Установи Happ из App Store (ссылка на сайте Happ).', 'Нажми «Добавить в Happ» выше или отсканируй QR-код камерой Happ.', 'Разреши добавить VPN-профиль и включи подключение.'],
-      },
-      windows: {
-        name: 'Happ', url: HAPP_URL,
-        steps: ['Скачай Happ для Windows с сайта и установи.', 'Скопируй ссылку выше и вставь её в Happ (кнопка «+» → из буфера обмена).', 'Включи подключение.'],
-      },
-      linux: {
-        name: 'Happ', url: HAPP_URL,
-        steps: ['Скачай Happ для Linux с сайта (пакет под свой дистрибутив) и установи.', 'Скопируй ссылку выше и вставь её в Happ.', 'Включи подключение.'],
-      },
-    },
+    apps: defaultApps(lang),
     people: [],
     pending: false, // есть изменения, которые ещё не опубликованы на сервере
   };
+}
+
+// Смена языка сайта: тексты по умолчанию переводим, а то, что пользователь правил сам, не трогаем.
+function switchSiteLang(subs, lang) {
+  const old = subs.site.lang ?? 'ru';
+  if (!i18n.LANGS.includes(lang) || old === lang) return subs;
+  const was = defaultApps(old);
+  const now = defaultApps(lang);
+  const same = (a, b) => JSON.stringify(a) === JSON.stringify(b);
+  const apps = Object.fromEntries(OS_LIST.map((os) => [os, same(subs.apps[os], was[os]) ? now[os] : subs.apps[os]]));
+  const title = subs.site.title === i18n.tr(old, 'site.defaultTitle') ? i18n.tr(lang, 'site.defaultTitle') : subs.site.title;
+  return { ...subs, apps, site: { ...subs.site, lang, title } };
 }
 
 function newToken() {
@@ -59,54 +62,55 @@ function newToken() {
 function validateApps(apps) {
   for (const os of OS_LIST) {
     const app = apps?.[os];
-    if (!app) throw new Error(`Нет инструкции для ${os}`);
-    if (typeof app.name !== 'string' || !app.name.trim() || app.name.length > 40) throw new Error(`Название приложения для ${os}: от 1 до 40 символов`);
+    if (!app) throw new Error(i18n.t('subs.noApp', { os }));
+    if (typeof app.name !== 'string' || !app.name.trim() || app.name.length > 40) throw new Error(i18n.t('subs.badAppName', { os }));
     if (typeof app.url !== 'string' || !/^https:\/\/[^\s"'<>]+$/.test(app.url) || app.url.length > 300) {
-      throw new Error(`Ссылка на приложение для ${os} должна начинаться с https://`);
+      throw new Error(i18n.t('subs.badAppUrl', { os }));
     }
     if (!Array.isArray(app.steps) || app.steps.length > 10
       || !app.steps.every((s) => typeof s === 'string' && s.length <= 300)) {
-      throw new Error(`Шаги для ${os}: до 10 строк по 300 символов`);
+      throw new Error(i18n.t('subs.badSteps', { os }));
     }
   }
 }
 
 function validateSubs(subs) {
   const { site, cascade, people } = subs;
-  if (!site || !cascade || !Array.isArray(people)) throw new Error('Файл подписок повреждён');
-  if (subs.pending !== undefined && typeof subs.pending !== 'boolean') throw new Error('Файл подписок повреждён');
+  if (!site || !cascade || !Array.isArray(people)) throw new Error(i18n.t('subs.corrupt'));
+  if (subs.pending !== undefined && typeof subs.pending !== 'boolean') throw new Error(i18n.t('subs.corrupt'));
+  if (site.lang !== undefined && !i18n.LANGS.includes(site.lang)) throw new Error(i18n.t('subs.corrupt'));
   if (!validPort(site.port)) {
-    throw new Error(`Порт сайта: число от 1 до 65535, кроме ${RESERVED_PORTS.join(', ')}`);
+    throw new Error(i18n.t('subs.badPort', { ports: RESERVED_PORTS.join(', ') }));
   }
   if (site.domain !== null && !(typeof site.domain === 'string' && DOMAIN_RE.test(site.domain))) {
-    throw new Error('Некорректный домен');
+    throw new Error(i18n.t('subs.badDomain'));
   }
   if (!Number.isInteger(site.updateHours) || site.updateHours < 1 || site.updateHours > 168) {
-    throw new Error('Интервал обновления: от 1 до 168 часов');
+    throw new Error(i18n.t('subs.badHours'));
   }
   if (typeof site.title !== 'string' || !site.title.trim() || site.title.length > 40) {
-    throw new Error('Название: от 1 до 40 символов');
+    throw new Error(i18n.t('subs.badTitle'));
   }
   // null — каскад ещё не выбран (новая установка без серверов). Иначе это id сервера из программы.
   for (const id of [site.host, cascade.entry, cascade.exit]) {
-    if (id !== null && !SERVER_ID_RE.test(String(id))) throw new Error('Некорректный id сервера в настройках подписок');
+    if (id !== null && !SERVER_ID_RE.test(String(id))) throw new Error(i18n.t('subs.badServerId'));
   }
   validateApps(subs.apps);
   const tokens = new Set();
   const keys = new Set();
   for (const p of people) {
-    if (typeof p.name !== 'string' || !p.name.trim() || p.name.length > 40) throw new Error('Имя человека: от 1 до 40 символов');
-    if (!TOKEN_RE.test(String(p.token))) throw new Error(`Некорректный код ссылки у «${p.name}»`);
-    if (tokens.has(p.token)) throw new Error('Повторяющийся код ссылки');
-    if (!KEY_RE.test(String(p.key))) throw new Error(`Некорректное имя ключа у «${p.name}»`);
-    if (keys.has(p.key)) throw new Error(`Ключ ${p.key} уже привязан к другому человеку`);
+    if (typeof p.name !== 'string' || !p.name.trim() || p.name.length > 40) throw new Error(i18n.t('subs.badPersonName'));
+    if (!TOKEN_RE.test(String(p.token))) throw new Error(i18n.t('subs.badToken', { name: p.name }));
+    if (tokens.has(p.token)) throw new Error(i18n.t('subs.dupToken'));
+    if (!KEY_RE.test(String(p.key))) throw new Error(i18n.t('subs.badKeyName', { name: p.name }));
+    if (keys.has(p.key)) throw new Error(i18n.t('subs.keyTaken', { key: p.key }));
     tokens.add(p.token);
     keys.add(p.key);
   }
 }
 
-function loadSubs(file) {
-  if (!fs.existsSync(file)) return defaultSubs();
+function loadSubs(file, lang = 'ru') {
+  if (!fs.existsSync(file)) return defaultSubs(lang);
   const subs = JSON.parse(fs.readFileSync(file, 'utf8'));
   validateSubs(subs);
   return subs;
@@ -132,7 +136,7 @@ function addPerson(subs, name, key) {
 }
 
 function reissue(subs, id) {
-  if (!subs.people.some((p) => p.id === id)) throw new Error('Человек не найден');
+  if (!subs.people.some((p) => p.id === id)) throw new Error(i18n.t('sipc.personNotFound'));
   return withPeople(subs, subs.people.map((p) => (p.id === id ? { ...p, token: newToken() } : p)));
 }
 
@@ -173,5 +177,5 @@ function freeKeys(keyNames, subs) {
 
 module.exports = {
   TOKEN_RE, KEY_RE, OS_LIST, RESERVED_PORTS, validPort, defaultSubs, newToken, validateSubs, loadSubs, saveSubs,
-  addPerson, reissue, removePerson, freeKeys, entryChoices, exitOf, resolveCascade,
+  addPerson, reissue, removePerson, freeKeys, entryChoices, exitOf, resolveCascade, defaultApps, switchSiteLang,
 };

@@ -54,7 +54,7 @@ def run(*cmd):
 
 def last_line(r):
     lines = (r.stderr or r.stdout or '').strip().splitlines()
-    return lines[-1] if lines else 'без подробностей'
+    return lines[-1] if lines else '@E:no_details'
 
 
 def read(path):
@@ -120,14 +120,14 @@ def main():
     data = json.load(sys.stdin)
     files, caddy, port = data.get('files'), data.get('caddyfile'), data.get('port')
     if not shutil.which(CADDY):
-        done(ok=False, error='Caddy не установлен: сначала нажми «Установить сайт на сервер»')
+        done(ok=False, error='@E:caddy_missing')
     if not isinstance(files, dict) or 'index.html' not in files or not isinstance(caddy, str):
-        done(ok=False, error='Пустой или неполный сайт')
+        done(ok=False, error='@E:site_incomplete')
     if not valid_port(port):
-        done(ok=False, error='Недопустимый порт сайта')
+        done(ok=False, error='@E:site_bad_port')
     for p, content in files.items():
         if not safe_path(p) or not isinstance(content, str):
-            done(ok=False, error='Недопустимый путь в данных сайта')
+            done(ok=False, error='@E:site_bad_path')
 
     old_caddy = read(CADDYFILE)
     caddy_changed = caddy != old_caddy
@@ -152,7 +152,7 @@ def main():
             write(CADDYFILE, old_caddy)
             run(SYSTEMCTL, 'reload', 'caddy')
             shutil.rmtree(target, ignore_errors=True)
-            done(ok=False, error='Caddy не принял конфиг: ' + last_line(r))
+            done(ok=False, error='@E:caddy_rejected|' + last_line(r))
 
     switch_current(target)
     open_port(port)

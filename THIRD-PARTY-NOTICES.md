@@ -21,6 +21,12 @@ VPS-VPN Monitor распространяется под лицензией MIT (
 - BSD-3-Clause: bcrypt-pbkdf;
 - Unlicense: tweetnacl.
 
+Необязательные зависимости ssh2 (ускорение криптографии, тоже входят в установщик):
+- MIT: [cpu-features](https://github.com/mscdex/cpu-features) 0.0.10, [buildcheck](https://github.com/mscdex/buildcheck) 0.0.7, [nan](https://github.com/nodejs/nan) 2.30.0;
+- Apache-2.0: библиотека [google/cpu_features](https://github.com/google/cpu_features), вкомпилированная в cpu-features.
+  Текст лицензии лежит в установленной программе: `resources\app.asar` →
+  `node_modules\cpu-features\deps\cpu_features\LICENSE`.
+
 ## Только для сборки (в установщик не входят)
 
 | Компонент | Лицензия |

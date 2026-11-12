@@ -43,14 +43,14 @@ def tune_exit(cfg):
     changes = []
     inbounds = reality_inbounds(cfg)
     if not inbounds:
-        raise ValueError('На выходе нет входящего VLESS+Reality')
+        raise ValueError('@E:exit_no_reality')
     for ib in inbounds:
         if ib['streamSettings'].get('network', 'tcp') not in ('tcp', 'raw'):
-            raise ValueError('Vision работает только поверх TCP, а у %s — %s' % (ib.get('tag'), ib['streamSettings'].get('network')))
+            raise ValueError('@E:vision_needs_tcp|%s|%s' % (ib.get('tag'), ib['streamSettings'].get('network')))
         for c in ib['settings']['clients']:
             if c.get('flow') != VISION:
                 c['flow'] = VISION
-                changes.append('%s: flow клиента -> %s' % (ib.get('tag'), VISION))
+                changes.append('%s: client flow -> %s' % (ib.get('tag'), VISION))
     return cfg, changes
 
 
@@ -59,12 +59,12 @@ def link_outbound(cfg, exit_ip):
         vnext = (o.get('settings') or {}).get('vnext') or []
         if o.get('protocol') == 'vless' and vnext and vnext[0].get('address') == exit_ip:
             return o
-    raise ValueError('Не найден исходящий VLESS на выход %s' % exit_ip)
+    raise ValueError('@E:no_outbound_to_exit|%s' % exit_ip)
 
 
 def check_sni(sni):
     if not isinstance(sni, str) or not SNI_RE.match(sni):
-        raise ValueError('Некорректный домен для SNI: %r' % sni)
+        raise ValueError('@E:bad_sni|%s' % sni)
 
 
 def tune_entry(cfg, exit_ip, sni):
@@ -74,11 +74,11 @@ def tune_entry(cfg, exit_ip, sni):
     changes = []
     out = link_outbound(cfg, exit_ip)
     if out['streamSettings'].get('network', 'tcp') not in ('tcp', 'raw'):
-        raise ValueError('Звено не на TCP: Vision включить нельзя')
+        raise ValueError('@E:link_not_tcp')
     for u in out['settings']['vnext'][0]['users']:
         if u.get('flow') != VISION:
             u['flow'] = VISION
-            changes.append('%s: flow звена -> %s' % (out.get('tag'), VISION))
+            changes.append('%s: link flow -> %s' % (out.get('tag'), VISION))
     for ib in reality_inbounds(cfg):
         r = ib['streamSettings']['realitySettings']
         dest_key = 'target' if 'target' in r and 'dest' not in r else 'dest'
@@ -171,14 +171,14 @@ def config_path():
     for p in ([m.group(1)] if m else []) + ['/etc/xray/config.json', '/usr/local/etc/xray/config.json']:
         if os.path.exists(p):
             return p
-    raise RuntimeError('Не найден конфиг Xray')
+    raise RuntimeError('@E:xray_config_missing')
 
 
 def public_key(private):
     out = run('xray', 'x25519', '-i', private).stdout
     m = re.search(r'^(?:Public key|Password(?: \(PublicKey\))?):\s*(\S+)', out, re.M | re.I)
     if not m:
-        raise RuntimeError('Не удалось получить публичный ключ Reality')
+        raise RuntimeError('@E:reality_pubkey')
     return m.group(1)
 
 
@@ -229,7 +229,7 @@ def xray_active():
 def stop_deadman():
     stopped = run('systemctl', 'stop', TIMER + '.timer')
     if stopped.returncode != 0:
-        raise RuntimeError('Не удалось остановить защитный таймер; успех не подтверждён')
+        raise RuntimeError('@E:guard_stop_failed')
     run('systemctl', 'reset-failed', TIMER + '.service', TIMER + '.timer')
 
 
@@ -250,17 +250,17 @@ def validate_service_config(path):
     # Проверка от root скрывала permission denied у реальной службы.
     identity = run('systemctl', 'show', 'xray', '-p', 'User', '--value')
     if identity.returncode:
-        raise RuntimeError('Не удалось определить пользователя службы Xray')
+        raise RuntimeError('@E:xray_user_unknown')
     user = identity.stdout.strip() or 'root'
     test = run('runuser', '-u', user, '--', 'xray', 'run', '-test', '-format', 'json', '-config', path, timeout=60)
     if test.returncode:
-        raise RuntimeError('Конфиг не прошёл проверку от пользователя службы %s: %s' % (user, path))
+        raise RuntimeError('@E:config_test_as_user|%s|%s' % (user, path))
 
 
 def apply(req):
     path = config_path()
     if run('systemctl', 'is-active', TIMER + '.timer').returncode == 0:
-        raise RuntimeError('Предыдущая операция ещё защищена таймером; сначала подтвердите или откатите её')
+        raise RuntimeError('@E:guard_pending')
     validate_service_config(path)
     with open(path, encoding='utf-8') as f:
         cfg = json.load(f)
@@ -272,10 +272,10 @@ def apply(req):
         sni = req['sni']
         check = sni_ok(sni)
         if not (check['tls13'] and check['h2'] and check['x25519']):
-            return {'ok': False, 'error': 'Сайт %s не подходит для Reality: %s' % (sni, check)}
+            return {'ok': False, 'error': '@E:sni_unsuitable|%s|%s' % (sni, check)}
         new, changes = tune_entry(cfg, req['exitIp'], sni)
     if not changes:
-        return {'ok': True, 'changes': [], 'note': 'Уже настроено, ничего не меняю'}
+        return {'ok': True, 'changes': [], 'note': '@E:already_configured'}
 
     tmp = temp_config_path(path)
     with open(tmp, 'w', encoding='utf-8') as f:
@@ -286,7 +286,7 @@ def apply(req):
     if test.returncode != 0:
         os.remove(tmp)
         tail = (test.stdout + test.stderr).strip().splitlines()[-1:] or ['']
-        return {'ok': False, 'error': 'xray -test не прошёл: ' + tail[0][:200]}
+        return {'ok': False, 'error': '@E:xray_test_failed|' + tail[0][:200].replace('|', '/')}
 
     backup = '%s.bak.tune.%s.%s' % (path, time.strftime('%Y%m%dT%H%M%S'), time.time_ns())
     copy_config(path, backup)
@@ -300,7 +300,7 @@ def apply(req):
     restore = 'cp -p -- %s %s && systemctl restart xray' % (shlex.quote(backup), shlex.quote(path))
     armed = run('systemd-run', '--unit=' + TIMER, '--on-active=%d' % DEADMAN, '/bin/sh', '-c', restore)
     if armed.returncode != 0 or run('systemctl', 'is-active', TIMER + '.timer').returncode != 0:
-        raise RuntimeError('Защитный таймер не запущен; рабочий конфиг не изменён')
+        raise RuntimeError('@E:guard_not_started')
 
     os.replace(tmp, path)
     run('systemctl', 'restart', 'xray', timeout=60)
@@ -310,8 +310,7 @@ def apply(req):
         recovered = xray_active()
         if recovered:
             stop_deadman()
-        return {'ok': False, 'error': 'Xray не поднялся с новым конфигом; бэкап возвращён, '
-                + ('служба восстановлена' if recovered else 'служба всё ещё не работает, таймер оставлен')}
+        return {'ok': False, 'error': '@E:xray_rollback_recovered' if recovered else '@E:xray_rollback_still_down'}
     return {'ok': True, 'changes': changes, 'deadman': DEADMAN}
 
 
@@ -352,9 +351,9 @@ def rollback(_req):
         with open(LAST_BACKUP) as f:
             backup = f.read().strip()
     except FileNotFoundError:
-        return {'ok': False, 'error': 'Нет записи о бэкапе — откатывать нечего'}
+        return {'ok': False, 'error': '@E:no_backup_record'}
     if not os.path.exists(backup):
-        return {'ok': False, 'error': 'Файл бэкапа пропал: ' + backup}
+        return {'ok': False, 'error': '@E:backup_missing|' + backup}
     validate_service_config(backup)
     copy_config(backup, config_path())
     run('systemctl', 'restart', 'xray', timeout=60)

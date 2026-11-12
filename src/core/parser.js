@@ -1,4 +1,5 @@
 'use strict';
+const i18n = require('../i18n');
 // Превращает текстовый вывод remote-script.js в обычный объект с числами.
 // Здесь нет ни SSH, ни Electron, поэтому модуль легко тестировать.
 
@@ -136,7 +137,7 @@ function parseSshAuth(lines) {
 
 function parseSnapshot(text) {
   const s = parseSections(text);
-  if (!s.hostname) throw new Error('Сервер вернул неполный ответ');
+  if (!s.hostname) throw new Error(i18n.t('srvmsg.incomplete'));
 
   const ifaces = parseNetdev(s.netdev);
   const iface = pickIface(s.route, ifaces);

@@ -1,4 +1,5 @@
 'use strict';
+const i18n = require('../i18n');
 // Перезапуск Xray и перезагрузка сервера.
 // Команда отвязана от SSH-сессии (setsid nohup): если твой ПК ходит через этот же VPN,
 // соединение оборвётся, но команда всё равно выполнится.
@@ -40,7 +41,7 @@ async function restartXray(connect, server, timing = DEFAULT_TIMING) {
     if (state === 'active') return;
     await delay(timing.retryMs);
   }
-  throw new Error(`Xray не запустился (состояние: ${state ?? 'нет связи'}). Посмотри журнал в терминале: journalctl -u xray -n 30`);
+  throw new Error(i18n.t('act.xrayNotStarted', { state: state ?? i18n.t('health.noAnswer') }));
 }
 
 async function rebootServer(connect, server) {
@@ -66,9 +67,9 @@ systemctl reset-failed vpsmon-ssh-guard.service 2>/dev/null || true
 systemd-run --on-active=120 --unit=vpsmon-ssh-guard /bin/sh -c '${restore}; ${reload}'
 printf '${lines.join('\\n')}\\n' > "$F"
 chmod 644 "$F"
-if ! sshd -t; then ${restore}; echo 'sshd отверг настройку'; exit 1; fi
+if ! sshd -t; then ${restore}; echo '@E:sshd_rejected'; exit 1; fi
 GOT=$(sshd -T 2>/dev/null | awk '/^passwordauthentication /{print $2}')
-if [ "$GOT" != "${enabled ? 'yes' : 'no'}" ]; then ${restore}; echo 'Настройка не применилась: другой файл sshd её перекрывает'; exit 1; fi
+if [ "$GOT" != "${enabled ? 'yes' : 'no'}" ]; then ${restore}; echo '@E:sshd_overridden'; exit 1; fi
 ${reload}
 `;
 }
@@ -80,7 +81,7 @@ async function setPasswordLogin(connect, server, enabled) {
   try {
     const script = Buffer.from(passwordScript(enabled)).toString('base64');
     const out = await first.exec(`echo ${script} | base64 -d | bash 2>&1; echo "@@rc=$?"`, 30000);
-    if (!/@@rc=0\s*$/.test(out)) throw new Error(out.replace(/@@rc=\d+\s*$/, '').trim().slice(-300) || 'Не удалось изменить настройку');
+    if (!/@@rc=0\s*$/.test(out)) throw new Error(out.replace(/@@rc=\d+\s*$/, '').trim().slice(-300) || i18n.t('act.settingFailed'));
   } finally {
     first.close();
   }
@@ -88,7 +89,7 @@ async function setPasswordLogin(connect, server, enabled) {
   try {
     check = await connect(server);
   } catch {
-    throw new Error('После изменения не удалось войти заново. Настройка сама вернётся через 2 минуты');
+    throw new Error(i18n.t('act.reloginFailed'));
   }
   try {
     await check.exec('systemctl stop vpsmon-ssh-guard.timer', 15000);
@@ -101,10 +102,10 @@ const MIN_PASSWORD = 12;
 const MAX_PASSWORD = 128;
 
 function validateNewPassword(password) {
-  if (typeof password !== 'string' || password.length < MIN_PASSWORD) throw new Error(`Пароль должен быть не короче ${MIN_PASSWORD} символов`);
-  if (password.length > MAX_PASSWORD) throw new Error(`Пароль должен быть не длиннее ${MAX_PASSWORD} символов`);
+  if (typeof password !== 'string' || password.length < MIN_PASSWORD) throw new Error(i18n.t('act.passShort', { n: MIN_PASSWORD }));
+  if (password.length > MAX_PASSWORD) throw new Error(i18n.t('act.passLong', { n: MAX_PASSWORD }));
   // Перевод строки позволил бы дописать в chpasswd вторую запись.
-  if (/[\r\n\0]/.test(password)) throw new Error('В пароле есть недопустимый символ');
+  if (/[\r\n\0]/.test(password)) throw new Error(i18n.t('act.passBadChar'));
 }
 
 // Пароль уходит только в стандартный ввод chpasswd: в командной строке его не видно.
@@ -115,7 +116,7 @@ async function changeRootPassword(connect, server, password, { verify }) {
     const out = await transport.exec('chpasswd 2>&1; echo "@@rc=$?"', 20000, `root:${password}\n`);
     if (!/@@rc=0\s*$/.test(out)) {
       const reason = out.replace(/@@rc=\d+\s*$/, '').split(password).join('***').trim().slice(-200);
-      throw new Error(`Сервер не принял пароль: ${reason}`);
+      throw new Error(i18n.t('act.passRejected', { reason }));
     }
   } finally {
     transport.close();
@@ -125,14 +126,14 @@ async function changeRootPassword(connect, server, password, { verify }) {
     const check = await connect({ host: server.host, user: 'root' }, { password });
     check.close();
   } catch {
-    throw new Error('Пароль изменён, но проверить вход новым паролем не удалось');
+    throw new Error(i18n.t('act.passUnverified'));
   }
 }
 
 // Ключ приложения нельзя убирать, если вход по паролю выключен: в сервер будет не войти.
 function assertCanDropAppKey(state) {
   if (state?.passwordAuth !== true) {
-    throw new Error('Сначала включи вход по паролю: иначе после удаления ключа на сервер будет не зайти');
+    throw new Error(i18n.t('act.enablePassFirst'));
   }
 }
 

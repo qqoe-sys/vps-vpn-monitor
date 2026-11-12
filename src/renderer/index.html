@@ -10,12 +10,15 @@
 <body>
   <nav class="side">
     <div class="brand">VPS-VPN Monitor</div>
-    <button class="nav active" data-view="overview">Обзор</button>
-    <button class="nav" data-view="keys">Ключи и трафик</button>
-    <button class="nav" data-view="subs">Подписки</button>
-    <button class="nav" data-view="terminal">Терминал</button>
-    <button class="nav" data-view="setup">+ Добавить сервер</button>
+    <button class="nav active" data-view="overview" data-i18n="nav.overview"></button>
+    <button class="nav" data-view="keys" data-i18n="nav.keys"></button>
+    <button class="nav" data-view="subs" data-i18n="nav.subs"></button>
+    <button class="nav" data-view="terminal" data-i18n="nav.terminal"></button>
+    <button class="nav" data-view="setup" data-i18n="nav.setup"></button>
     <div class="side-list" id="side-list"></div>
+    <label class="lang-switch"><span data-i18n="lang.label"></span>
+      <select id="lang-select"><option value="ru">Русский</option><option value="en">English</option></select>
+    </label>
   </nav>
   <main>
     <section id="overview" class="view"></section>
@@ -25,7 +28,7 @@
     <section id="terminal" class="view term-view" hidden>
       <div class="term-bar" id="term-bar"></div>
       <div class="term-host" id="term-host">
-        <p class="empty" id="term-empty">Выбери сервер выше, чтобы открыть терминал.</p>
+        <p class="empty" id="term-empty" data-i18n="term.empty"></p>
       </div>
     </section>
   </main>
@@ -33,6 +36,9 @@
   <div class="modal" id="modal" hidden></div>
   <script src="../../node_modules/@xterm/xterm/lib/xterm.js"></script>
   <script src="../../node_modules/@xterm/addon-fit/lib/addon-fit.js"></script>
+  <script src="../i18n/ru.js"></script>
+  <script src="../i18n/en.js"></script>
+  <script src="../i18n/index.js"></script>
   <script src="app.js"></script>
   <script src="setup.js"></script>
   <script src="subs.js"></script>

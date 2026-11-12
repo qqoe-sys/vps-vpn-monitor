@@ -7,20 +7,23 @@ const terminals = new Map();
 let activeTerm = null;
 
 const $ = (id) => document.getElementById(id);
+// Переводы: t('ключ', {подстановки}). Словари — src/i18n, язык выбирается внизу меню.
+const { t } = window.I18N;
 
 // Имена ключей и ошибки приходят извне, поэтому экранируем всё, что вставляем в HTML.
-const esc = (v) => String(v ?? '').replace(/[&<>"']/g, (c) => `&#${c.charCodeAt(0)};`);
+// Заодно переводим коды серверных скриптов (@E:...) в текст текущего языка.
+const esc = (v) => window.I18N.translateServer(String(v ?? '')).replace(/[&<>"']/g, (c) => `&#${c.charCodeAt(0)};`);
 
 const STATUS = {
-  ok: ['✓', 'Работает'],
-  warn: ['!', 'Внимание'],
-  down: ['✕', 'Проблема'],
-  connecting: ['…', 'Подключение'],
+  ok: ['✓', 'status.ok'],
+  warn: ['!', 'status.warn'],
+  down: ['✕', 'status.down'],
+  connecting: ['…', 'status.connecting'],
 };
 
 function formatBytes(n) {
   if (n === null || n === undefined) return '—';
-  const units = ['Б', 'КБ', 'МБ', 'ГБ', 'ТБ', 'ПБ'];
+  const units = t('unit.bytes').split(',');
   let v = n;
   let i = 0;
   while (v >= 1024 && i < units.length - 1) { v /= 1024; i += 1; }
@@ -30,7 +33,7 @@ function formatBytes(n) {
 function formatSpeed(bytesPerSec) {
   if (bytesPerSec === null || bytesPerSec === undefined) return '—';
   const mbit = (bytesPerSec * 8) / 1e6;
-  return mbit >= 100 ? `${mbit.toFixed(0)} Мбит/с` : `${mbit.toFixed(2)} Мбит/с`;
+  return t('unit.mbps', { v: mbit >= 100 ? mbit.toFixed(0) : mbit.toFixed(2) });
 }
 
 function formatUptime(sec) {
@@ -38,7 +41,7 @@ function formatUptime(sec) {
   const d = Math.floor(sec / 86400);
   const h = Math.floor((sec % 86400) / 3600);
   const m = Math.floor((sec % 3600) / 60);
-  return d ? `${d} д ${h} ч` : `${h} ч ${m} мин`;
+  return d ? t('unit.uptimeDays', { d, h }) : t('unit.uptimeHours', { h, m });
 }
 
 function cleanError(err) {
@@ -48,7 +51,7 @@ function cleanError(err) {
 
 function statusBadge(level, label) {
   const [icon, text] = STATUS[level] ?? STATUS.connecting;
-  return `<span class="status ${level}">${icon} ${esc(label ?? text)}</span>`;
+  return `<span class="status ${level}">${icon} ${esc(label ?? t(text))}</span>`;
 }
 
 // --- Обзор ---
@@ -87,9 +90,9 @@ function speedChart(s) {
       <polyline stroke="var(--series-1)" points="${line('rx')}"></polyline>
       <polyline stroke="var(--series-2)" points="${line('tx')}"></polyline>
     </svg>
-    <span class="chart-max">до ${formatSpeed(peak)}</span>
+    <span class="chart-max">${esc(t('ov.chartMax', { v: formatSpeed(peak) }))}</span>
   </div>
-  <div class="chart-caption">Скорость за последний час</div>`;
+  <div class="chart-caption">${t('ov.chartCaption')}</div>`;
 }
 
 function serverDetail(s) {
@@ -98,51 +101,61 @@ function serverDetail(s) {
   const msg = actionMessages.get(s.id);
   let info = '';
   if (snap) {
-    const link = s.link ? (s.link.ok ? `есть, ${s.link.ms} мс` : 'нет') : '—';
+    const link = s.link ? (s.link.ok ? t('ov.linkOk', { ms: s.link.ms }) : t('ov.linkNo')) : '—';
     const services = Object.entries(snap.services).map(([n, st]) => `${n}: ${st}`).join(', ');
     info = `
       <div class="legend">
-        <span><i class="swatch" style="background:var(--series-1)"></i>Входящий ${formatSpeed(s.rates.rxBps)}</span>
-        <span><i class="swatch" style="background:var(--series-2)"></i>Исходящий ${formatSpeed(s.rates.txBps)}</span>
+        <span><i class="swatch" style="background:var(--series-1)"></i>${t('ov.rx')} ${formatSpeed(s.rates.rxBps)}</span>
+        <span><i class="swatch" style="background:var(--series-2)"></i>${t('ov.tx')} ${formatSpeed(s.rates.txBps)}</span>
       </div>
       ${speedChart(s)}
       <dl class="facts">
-        <div><dt>Адрес</dt><dd>${esc(s.host)}</dd></div>
+        <div><dt>${t('ov.address')}</dt><dd>${esc(s.host)}</dd></div>
         <div><dt>Xray</dt><dd>${esc(snap.xray.version ?? '—')}</dd></div>
-        <div><dt>Соединений TCP</dt><dd>${snap.connections ?? '—'}</dd></div>
-        <div><dt>Рестартов Xray</dt><dd>${snap.xray.restarts ?? '—'}</dd></div>
-        <div><dt>Порты</dt><dd>${esc(snap.listening.filter((p) => p !== 22 && p < 10000).join(', '))}</dd></div>
-        <div><dt>Связь с выходом</dt><dd>${link}</dd></div>
+        <div><dt>${t('ov.tcp')}</dt><dd>${snap.connections ?? '—'}</dd></div>
+        <div><dt>${t('ov.restarts')}</dt><dd>${snap.xray.restarts ?? '—'}</dd></div>
+        <div><dt>${t('ov.ports')}</dt><dd>${esc(snap.listening.filter((p) => p !== 22 && p < 10000).join(', '))}</dd></div>
+        <div><dt>${t('ov.link')}</dt><dd>${link}</dd></div>
       </dl>
       <p class="note">${esc(services)}</p>`;
   }
   return `<div class="row-detail">${info}
     <div class="card-actions">
-      <button class="btn" data-open-term="${esc(s.id)}">Открыть терминал</button>
-      <button class="btn" data-action="restartXray" data-server="${esc(s.id)}" ${busy}>Перезапустить Xray</button>
-      <button class="btn danger" data-action="rebootServer" data-server="${esc(s.id)}" ${busy}>Перезагрузить сервер</button>
-      ${s.passwordAuth === undefined ? '' : `<button class="btn" data-action="togglePassword" data-server="${esc(s.id)}" ${busy}>Вход по паролю: ${s.passwordAuth ? 'вкл' : 'выкл'}</button>`}
-      <button class="btn" data-change-pass="${esc(s.id)}" ${busy}>Сменить пароль</button>
-      <button class="btn" data-edit-limit="${esc(s.id)}">Лимит трафика</button>
-      <button class="btn danger" data-remove-settings="${esc(s.id)}" ${busy}>Удалить настройки</button>
-      ${s.managed && !s.noAccess ? `<button class="btn danger" data-remove-key="${esc(s.id)}" ${busy}>Удалить ключ доступа</button>` : ''}
-      ${s.noAccess ? `<button class="btn" data-reconnect="${esc(s.id)}">Подключить снова</button>` : ''}
-      ${s.exitHost && !s.replacedBy ? `<button class="btn" data-replace-entry="${esc(s.id)}" ${busy}>Заменить вход</button>` : ''}
-      ${s.replacedBy ? `<button class="btn" data-close-exit="${esc(s.id)}" ${busy}>Закрыть доступ на выходе</button>
-      <button class="btn" data-undo-replace="${esc(s.id)}" ${busy}>Отменить замену</button>
-      <button class="btn danger" data-forget="${esc(s.id)}" ${busy}>Удалить сервер из списка</button>` : ''}
-      ${s.managed && s.connection === 'offline' && !s.replacedBy ? `<button class="btn" data-forget="${esc(s.id)}">Убрать из программы</button>` : ''}
+      <button class="btn" data-open-term="${esc(s.id)}">${t('ov.openTerm')}</button>
+      <button class="btn" data-action="restartXray" data-server="${esc(s.id)}" ${busy}>${t('ov.restartXray')}</button>
+      <button class="btn danger" data-action="rebootServer" data-server="${esc(s.id)}" ${busy}>${t('ov.reboot')}</button>
+      ${s.passwordAuth === undefined ? '' : `<button class="btn" data-action="togglePassword" data-server="${esc(s.id)}" ${busy}>${t(s.passwordAuth ? 'ov.passOn' : 'ov.passOff')}</button>`}
+      <button class="btn" data-change-pass="${esc(s.id)}" ${busy}>${t('ov.changePass')}</button>
+      <button class="btn" data-edit-limit="${esc(s.id)}">${t('ov.limit')}</button>
+      <button class="btn danger" data-remove-settings="${esc(s.id)}" ${busy}>${t('ov.removeSettings')}</button>
+      ${s.managed && !s.noAccess ? `<button class="btn danger" data-remove-key="${esc(s.id)}" ${busy}>${t('ov.removeKey')}</button>` : ''}
+      ${s.noAccess ? `<button class="btn" data-reconnect="${esc(s.id)}">${t('ov.reconnect')}</button>` : ''}
+      ${s.exitHost && !s.replacedBy ? `<button class="btn" data-replace-entry="${esc(s.id)}" ${busy}>${t('ov.replaceEntry')}</button>` : ''}
+      ${s.replacedBy ? `<button class="btn" data-close-exit="${esc(s.id)}" ${busy}>${t('ov.closeExit')}</button>
+      <button class="btn" data-undo-replace="${esc(s.id)}" ${busy}>${t('ov.undoReplace')}</button>
+      <button class="btn danger" data-forget="${esc(s.id)}" ${busy}>${t('ov.forget')}</button>` : ''}
+      ${s.managed && s.connection === 'offline' && !s.replacedBy ? `<button class="btn" data-forget="${esc(s.id)}">${t('ov.forgetOffline')}</button>` : ''}
     </div>
     <p class="key-msg ${msg?.error ? 'error' : ''}">${esc(msg?.text ?? '')}</p>
   </div>`;
 }
 
 // Лимиты тарифов десятичные, как у хостеров.
-const formatTb = (bytes) => `${(bytes / 1e12).toFixed(2)} ТБ`;
+const formatTb = (bytes) => t('unit.tb', { v: (bytes / 1e12).toFixed(2) });
 
 function limitLine(s) {
   if (!s.limit) return '';
-  return `<span class="row-limit ${s.limit.level}">Осталось ${formatTb(s.limit.remainingBytes)} из ${formatTb(s.limit.totalBytes)}</span>`;
+  return `<span class="row-limit ${s.limit.level}">${esc(t('ov.limitLeft', { left: formatTb(s.limit.remainingBytes), total: formatTb(s.limit.totalBytes) }))}</span>`;
+}
+
+// Роль считаем по данным серверов, а не по сохранённой строке: так она всегда на текущем языке.
+function roleText(s) {
+  const all = [...servers.values()];
+  if (s.exitHost) {
+    const exit = all.find((x) => x.host === s.exitHost);
+    return t('role.entry', { exit: exit ? exit.name : s.exitHost });
+  }
+  return t(all.some((x) => x.exitHost === s.host) ? 'role.exit' : 'role.single');
 }
 
 function serverRow(s) {
@@ -153,12 +166,12 @@ function serverRow(s) {
     ? `<div class="row-problems"><ul class="problems">${s.health.problems.map((p) => `<li>${esc(p.text)}</li>`).join('')}</ul></div>` : '';
   return `<button class="row" data-toggle="${esc(s.id)}" aria-expanded="${open}">
       <span class="chev">▸</span>
-      <span><span class="row-name">${esc(s.name)} ${statusBadge(s.health.level)}</span><span class="row-role">${esc(s.role)}</span>${s.replacedBy ? `<span class="row-replaced">заменён → ${esc(servers.get(s.replacedBy)?.name ?? s.replacedBy)}</span>` : ''}${limitLine(s)}</span>
-      ${meter('CPU', m.cpu, snap ? `${snap.cores} ядер, нагрузка ${snap.load.join(' ')}` : '')}
-      ${meter('Память', m.mem, snap ? `${formatBytes(snap.mem.total - snap.mem.available)} из ${formatBytes(snap.mem.total)}` : '')}
-      ${meter('Диск', m.disk, snap ? `${formatBytes(snap.disk?.used)} из ${formatBytes(m.diskTotal)}` : '')}
+      <span><span class="row-name">${esc(s.name)} ${statusBadge(s.health.level)}</span><span class="row-role">${esc(roleText(s))}</span>${s.replacedBy ? `<span class="row-replaced">${esc(t('ov.replacedBy', { name: servers.get(s.replacedBy)?.name ?? s.replacedBy }))}</span>` : ''}${limitLine(s)}</span>
+      ${meter('CPU', m.cpu, snap ? t('ov.cpuDetail', { cores: snap.cores, load: snap.load.join(' ') }) : '')}
+      ${meter(t('ov.mem'), m.mem, snap ? t('ov.ofTotal', { used: formatBytes(snap.mem.total - snap.mem.available), total: formatBytes(snap.mem.total) }) : '')}
+      ${meter(t('ov.disk'), m.disk, snap ? t('ov.ofTotal', { used: formatBytes(snap.disk?.used), total: formatBytes(m.diskTotal) }) : '')}
       <span class="row-speed">↓ ${formatSpeed(s.rates.rxBps)}<br>↑ ${formatSpeed(s.rates.txBps)}</span>
-      <span class="row-uptime" title="Аптайм">${snap ? formatUptime(snap.uptimeSec) : '—'}</span>
+      <span class="row-uptime" title="${t('ov.uptime')}">${snap ? formatUptime(snap.uptimeSec) : '—'}</span>
     </button>${problems}${open ? serverDetail(s) : ''}`;
 }
 
@@ -185,10 +198,10 @@ const city = (s) => s.name.split(' ').slice(1).join(' ');
 
 function vpnBadge(group) {
   const levels = [...activeEntries(group).map((e) => e.health.level), group.exit?.health.level];
-  if (levels.includes('down')) return statusBadge('down', 'VPN: проблема');
+  if (levels.includes('down')) return statusBadge('down', t('ov.vpnDown'));
   if (levels.includes('connecting')) return statusBadge('connecting');
-  if (levels.includes('warn')) return statusBadge('warn', 'VPN работает, есть замечания');
-  return statusBadge('ok', 'VPN работает');
+  if (levels.includes('warn')) return statusBadge('warn', t('ov.vpnWarn'));
+  return statusBadge('ok', t('ov.vpnOk'));
 }
 
 // Серверы вне каскада показываются своей группой.
@@ -209,7 +222,7 @@ function renderOverview() {
     <div class="group-head"><span class="group-title">${esc(s.name)}</span>${vpnBadge({ entry: s })}</div>
     ${serverRow(s)}
   </section>`);
-  $('overview').innerHTML = `<h2>Обзор</h2>${[...cascades, ...singles].join('')}`;
+  $('overview').innerHTML = `<h2>${t('nav.overview')}</h2>${[...cascades, ...singles].join('') || `<p class="empty">${t('ov.empty')}</p>`}`;
 }
 
 function renderSide() {
@@ -222,13 +235,13 @@ function renderSide() {
 const actionBusy = new Set();
 const actionMessages = new Map();
 const ACTION_TEXT = {
-  restartXray: ['Перезапускаю Xray…', 'Xray перезапущен'],
-  rebootServer: ['Отправляю перезагрузку…', 'Сервер перезагружается, вернётся через 1–2 минуты'],
-  togglePassword: ['Меняю настройку входа…', 'Настройка входа изменена'],
+  restartXray: ['act.restartPending', 'act.restartDone'],
+  rebootServer: ['act.rebootPending', 'act.rebootDone'],
+  togglePassword: ['act.passPending', 'act.passDone'],
 };
 
 async function runServerAction(action, serverId) {
-  const [pending, done] = ACTION_TEXT[action];
+  const [pending, done] = ACTION_TEXT[action].map((k) => t(k));
   actionBusy.add(serverId);
   actionMessages.set(serverId, { text: pending });
   renderOverview();
@@ -253,20 +266,20 @@ function dayBars(cssClass, range, byDay, peak) {
   if (!range.length) return '';
   return `<div class="${cssClass}">${range.map((date) => {
     const d = byDay[date];
-    const tip = `${shortDay(date)}\nВсего ${formatBytes(dayTotal(d))}\nСкачано ${formatBytes(d?.down ?? 0)}\nОтправлено ${formatBytes(d?.up ?? 0)}`;
+    const tip = t('keys.dayTip', { day: shortDay(date), total: formatBytes(dayTotal(d)), down: formatBytes(d?.down ?? 0), up: formatBytes(d?.up ?? 0) });
     return `<div data-tip="${esc(tip)}"><i style="height:${(dayTotal(d) / peak) * 100}%"></i></div>`;
   }).join('')}</div>`;
 }
 
-function totalsBlock(t) {
-  const peak = Math.max(1, ...t.range.map((d) => dayTotal(t.daily[d])));
+function totalsBlock(tr) {
+  const peak = Math.max(1, ...tr.range.map((d) => dayTotal(tr.daily[d])));
   return `<div class="tiles">
-      <div><div class="tile-label">Всего через интерфейс</div><div class="tile-value">${formatBytes(t.total.up + t.total.down)}</div></div>
-      <div><div class="tile-label">Входящий</div><div class="tile-value">${formatBytes(t.total.down)}</div></div>
-      <div><div class="tile-label">Исходящий</div><div class="tile-value">${formatBytes(t.total.up)}</div></div>
+      <div><div class="tile-label">${t('keys.totalIface')}</div><div class="tile-value">${formatBytes(tr.total.up + tr.total.down)}</div></div>
+      <div><div class="tile-label">${t('ov.rx')}</div><div class="tile-value">${formatBytes(tr.total.down)}</div></div>
+      <div><div class="tile-label">${t('ov.tx')}</div><div class="tile-value">${formatBytes(tr.total.up)}</div></div>
     </div>
-    <p class="before-line">До начала учёта${t.since ? ` (до ${shortDay(t.since)})` : ''}: ${formatBytes(t.before.up + t.before.down)}</p>
-    ${dayBars('bars', t.range, t.daily, peak)}`;
+    <p class="before-line">${esc(t(tr.since ? 'keys.beforeSince' : 'keys.before', { since: tr.since ? shortDay(tr.since) : '', v: formatBytes(tr.before.up + tr.before.down) }))}</p>
+    ${dayBars('bars', tr.range, tr.daily, peak)}`;
 }
 
 const keyNames = new Map(); // список ключей с сервера: массив или { error }
@@ -285,28 +298,28 @@ function refreshKeySpeeds(s) {
   }
 }
 
-function keysTable(t) {
-  const names = keyNames.get(t.id);
+function keysTable(tr) {
+  const names = keyNames.get(tr.id);
   const live = Array.isArray(names) ? new Set(names) : null;
-  const usage = new Map(t.users.map((u) => [u.name, u]));
+  const usage = new Map(tr.users.map((u) => [u.name, u]));
   for (const name of live ?? []) {
     if (!usage.has(name)) usage.set(name, { name, up: 0, down: 0, before: 0, days: {} });
   }
-  if (!usage.size) return `<p class="empty">${names ? 'Ключей нет.' : 'Загрузка ключей…'}</p>`;
+  if (!usage.size) return `<p class="empty">${t(names ? 'keys.none' : 'keys.loading')}</p>`;
   const rows = [...usage.values()].sort((a, b) => b.up + b.down - (a.up + a.down));
-  const peak = Math.max(1, ...rows.flatMap((u) => t.range.map((d) => dayTotal(u.days[d]))));
-  const server = esc(t.id);
-  return `<table><thead><tr><th>Ключ</th><th>Скорость</th><th>По дням</th><th>Скачано</th><th>Отправлено</th><th>Всего</th><th>До учёта</th><th></th></tr></thead><tbody>
+  const peak = Math.max(1, ...rows.flatMap((u) => tr.range.map((d) => dayTotal(u.days[d]))));
+  const server = esc(tr.id);
+  return `<table><thead><tr><th>${t('keys.colKey')}</th><th>${t('keys.colSpeed')}</th><th>${t('keys.colDays')}</th><th>${t('keys.colDown')}</th><th>${t('keys.colUp')}</th><th>${t('keys.colTotal')}</th><th>${t('keys.colBefore')}</th><th></th></tr></thead><tbody>
     ${rows.map((u) => {
     const deleted = live && !live.has(u.name);
     return `<tr>
-      <td>${esc(u.name)}${deleted ? '<span class="tag-deleted">удалён</span>' : ''}</td>
-      <td class="key-speed" data-key-speed="${esc(u.name)}">${keySpeedText(servers.get(t.id)?.keyRates?.[u.name])}</td>
-      <td class="mini-cell">${dayBars('mini', t.range, u.days, peak)}</td>
+      <td>${esc(u.name)}${deleted ? `<span class="tag-deleted">${t('keys.deleted')}</span>` : ''}</td>
+      <td class="key-speed" data-key-speed="${esc(u.name)}">${keySpeedText(servers.get(tr.id)?.keyRates?.[u.name])}</td>
+      <td class="mini-cell">${dayBars('mini', tr.range, u.days, peak)}</td>
       <td>${formatBytes(u.down)}</td><td>${formatBytes(u.up)}</td><td>${formatBytes(u.up + u.down)}</td><td>${formatBytes(u.before)}</td>
       <td class="key-actions">${live && !deleted ? `
-        <button class="btn" data-key-links="${esc(u.name)}" data-server="${server}">Ссылки</button>
-        <button class="btn" data-key-delete="${esc(u.name)}" data-server="${server}">Удалить</button>` : ''}</td>
+        <button class="btn" data-key-links="${esc(u.name)}" data-server="${server}">${t('keys.links')}</button>
+        <button class="btn" data-key-delete="${esc(u.name)}" data-server="${server}">${t('common.delete')}</button>` : ''}</td>
     </tr>`;
   }).join('')}
   </tbody></table>${names?.error ? `<p class="key-msg error">${esc(names.error)}</p>` : ''}`;
@@ -315,42 +328,42 @@ function keysTable(t) {
 function exitBlock(exit) {
   const days = [...exit.range].reverse().filter((d) => exit.daily[d]);
   const list = days.length
-    ? `<table><thead><tr><th>День</th><th>Скачано</th><th>Отправлено</th><th>Всего</th></tr></thead><tbody>
+    ? `<table><thead><tr><th>${t('keys.colDay')}</th><th>${t('keys.colDown')}</th><th>${t('keys.colUp')}</th><th>${t('keys.colTotal')}</th></tr></thead><tbody>
       ${days.map((d) => `<tr><td>${shortDay(d)}</td><td>${formatBytes(exit.daily[d].down)}</td><td>${formatBytes(exit.daily[d].up)}</td><td>${formatBytes(dayTotal(exit.daily[d]))}</td></tr>`).join('')}
       </tbody></table>`
-    : '<p class="empty">За этот период данных нет.</p>';
+    : `<p class="empty">${t('keys.noData')}</p>`;
   return `<div class="exit-box">${totalsBlock(exit)}${list}</div>`;
 }
 
 function renderKeysView() {
-  const entries = lastTraffic.filter((t) => t.hasKeyStats);
-  if (!entries.some((t) => t.id === ui.entry)) ui.entry = entries[0]?.id ?? null;
-  const t = entries.find((x) => x.id === ui.entry);
-  if (!t) { $('keys').innerHTML = '<h2>Ключи и трафик</h2>'; return; }
-  const exit = lastTraffic.find((x) => x.id === t.exitId);
-  const periods = [[1, 'Сегодня'], [7, '7 дней'], [30, '30 дней'], [0, 'Всё время']];
-  const msg = keyMessages.get(t.id);
-  $('keys').innerHTML = `<h2>Ключи и трафик</h2>
+  const entries = lastTraffic.filter((tr) => tr.hasKeyStats);
+  if (!entries.some((tr) => tr.id === ui.entry)) ui.entry = entries[0]?.id ?? null;
+  const tr = entries.find((x) => x.id === ui.entry);
+  if (!tr) { $('keys').innerHTML = `<h2>${t('nav.keys')}</h2><p class="empty">${t('keys.noServers')}</p>`; return; }
+  const exit = lastTraffic.find((x) => x.id === tr.exitId);
+  const periods = [[1, t('keys.today')], [7, t('keys.days', { n: 7 })], [30, t('keys.days', { n: 30 })], [0, t('keys.allTime')]];
+  const msg = keyMessages.get(tr.id);
+  $('keys').innerHTML = `<h2>${t('nav.keys')}</h2>
     <div class="topbar">
-      <div class="tabs">${entries.map((e) => `<button class="btn ${e.id === t.id ? 'active' : ''}" data-entry="${esc(e.id)}">${esc(e.name)}</button>`).join('')}</div>
+      <div class="tabs">${entries.map((e) => `<button class="btn ${e.id === tr.id ? 'active' : ''}" data-entry="${esc(e.id)}">${esc(e.name)}</button>`).join('')}</div>
       <div class="filters">${periods.map(([d, label]) => `<button class="btn ${d === ui.days ? 'active' : ''}" data-days="${d}">${label}</button>`).join('')}</div>
     </div>
     <article class="card">
       <div class="card-head"><div>
-        <div class="card-title">${esc(t.name)}</div>
-        <div class="source">${t.collector ? 'Учёт ведётся на сервере' : 'Учёт ведётся в приложении: сборщик на сервере не установлен'}</div>
+        <div class="card-title">${esc(tr.name)}</div>
+        <div class="source">${t(tr.collector ? 'keys.collectorServer' : 'keys.collectorApp')}</div>
       </div></div>
-      ${totalsBlock(t)}
-      <form class="key-form" data-key-form="${esc(t.id)}">
-        <input name="key" placeholder="Имя нового ключа" maxlength="32" aria-label="Имя нового ключа" autocomplete="off">
-        ${t.modes.length > 1 ? `<select name="profile" aria-label="Режим ключа">${t.modes.map((m) => `<option value="${esc(m)}">${m === 'cascade' ? 'Каскад' : 'Одиночный'}</option>`).join('')}</select>` : ''}
-        <button class="btn" ${keyBusy.has(t.id) ? 'disabled' : ''}>Добавить ключ</button>
+      ${totalsBlock(tr)}
+      <form class="key-form" data-key-form="${esc(tr.id)}">
+        <input name="key" placeholder="${t('keys.newName')}" maxlength="32" aria-label="${t('keys.newName')}" autocomplete="off">
+        ${tr.modes.length > 1 ? `<select name="profile" aria-label="${t('keys.mode')}">${tr.modes.map((m) => `<option value="${esc(m)}">${t(m === 'cascade' ? 'keys.modeCascade' : 'keys.modeSingle')}</option>`).join('')}</select>` : ''}
+        <button class="btn" ${keyBusy.has(tr.id) ? 'disabled' : ''}>${t('keys.add')}</button>
       </form>
       <p class="key-msg ${msg?.error ? 'error' : ''}">${esc(msg?.text ?? '')}</p>
-      ${keysTable(t)}
-      ${exit ? `<p class="exit-toggle"><button class="btn" data-toggle-exit>${ui.showExit ? 'Скрыть' : 'Показать'} трафик выхода: ${esc(exit.name)}</button></p>${ui.showExit ? exitBlock(exit) : ''}` : ''}
+      ${keysTable(tr)}
+      ${exit ? `<p class="exit-toggle"><button class="btn" data-toggle-exit>${esc(t(ui.showExit ? 'keys.hideExit' : 'keys.showExit', { name: exit.name }))}</button></p>${ui.showExit ? exitBlock(exit) : ''}` : ''}
     </article>
-    <p class="note">«Всего» считается через сетевой интерфейс: на входном сервере он примерно вдвое больше суммы по ключам. «До учёта» — объём из счётчиков на момент начала учёта, без дат; он входит только в «Всё время».</p>`;
+    <p class="note">${t('keys.note')}</p>`;
 }
 
 async function loadKeyNames(serverId) {
@@ -388,17 +401,17 @@ const FINGERPRINTS = ['firefox', 'chrome', 'safari', 'edge', 'ios', 'android', '
 // source — откуда получать ссылки заново, когда меняют fingerprint.
 function showLinks(title, links, source, fp = 'firefox') {
   const modal = $('modal');
-  const picker = source ? `<label class="fp-row">Fingerprint
+  const picker = source ? `<label class="fp-row">${t('links.fingerprint')}
     <select id="fp-select" data-server="${esc(source.server)}" data-name="${esc(source.name)}" data-title="${esc(title)}">
       ${FINGERPRINTS.map((f) => `<option ${f === fp ? 'selected' : ''}>${f}</option>`).join('')}
     </select></label>` : '';
   modal.innerHTML = `<div class="modal-box" role="dialog" aria-label="${esc(title)}">
-    <div class="modal-head"><span>${esc(title)}</span><button class="btn" data-modal-close>Закрыть</button></div>
+    <div class="modal-head"><span>${esc(title)}</span><button class="btn" data-modal-close>${t('common.close')}</button></div>
     ${picker}
     <div class="qr-row">${links.map((l) => `<div>
       <div class="qr-title">${esc(l.label)}</div>
-      <img src="${esc(l.qr)}" alt="QR-код ${esc(l.label)}">
-      <button class="btn" data-copy="${esc(l.url)}">Скопировать ссылку</button>
+      <img src="${esc(l.qr)}" alt="${esc(t('links.qrAlt', { label: l.label }))}">
+      <button class="btn" data-copy="${esc(l.url)}">${t('links.copy')}</button>
     </div>`).join('')}</div>
   </div>`;
   modal.hidden = false;
@@ -424,26 +437,26 @@ function setView(view) {
 
 function renderTermBar() {
   const openers = [...servers.values()].map((s) => `<button class="btn" data-open-term="${esc(s.id)}">+ ${esc(s.name)}</button>`).join('');
-  const tabs = [...terminals.entries()].map(([id, t]) => `
+  const tabs = [...terminals.entries()].map(([id, tab]) => `
     <span class="btn term-tab ${id === activeTerm ? 'active' : ''}" data-term-tab="${id}" role="button" tabindex="0">
-      ${esc(t.name)}${t.ended ? ' (закрыт)' : ''}
-      <button class="term-x" data-term-close="${id}" aria-label="Закрыть вкладку">×</button>
+      ${esc(tab.name)}${tab.ended ? ` ${t('term.closedTag')}` : ''}
+      <button class="term-x" data-term-close="${id}" aria-label="${t('term.closeTab')}">×</button>
     </span>`).join('');
   $('term-bar').innerHTML = openers + (tabs ? `<span class="term-sep"></span>${tabs}` : '');
   $('term-empty').hidden = terminals.size > 0;
 }
 
 function fitActive() {
-  const t = terminals.get(activeTerm);
-  if (t && ui.view === 'terminal') {
-    t.fit.fit();
-    t.term.focus();
+  const tab = terminals.get(activeTerm);
+  if (tab && ui.view === 'terminal') {
+    tab.fit.fit();
+    tab.term.focus();
   }
 }
 
 function activateTerm(id) {
   activeTerm = id;
-  for (const [tid, t] of terminals) t.el.hidden = tid !== id;
+  for (const [tid, tab] of terminals) tab.el.hidden = tid !== id;
   renderTermBar();
   fitActive();
 }
@@ -451,7 +464,7 @@ function activateTerm(id) {
 async function openTerminal(serverId) {
   setView('terminal');
   if (!window.Terminal || !window.FitAddon) {
-    $('term-empty').textContent = 'Не загрузился xterm.js: выполни npm install.';
+    $('term-empty').textContent = t('term.noXterm');
     return;
   }
   const TerminalClass = window.Terminal.Terminal ?? window.Terminal;
@@ -484,7 +497,7 @@ async function openTerminal(serverId) {
   } catch (err) {
     term.dispose();
     el.remove();
-    $('term-empty').textContent = `Не удалось подключиться: ${cleanError(err)}`;
+    $('term-empty').textContent = t('term.connectFailed', { err: cleanError(err) });
     $('term-empty').hidden = false;
     return;
   }
@@ -495,11 +508,11 @@ async function openTerminal(serverId) {
 }
 
 function closeTab(id) {
-  const t = terminals.get(id);
-  if (!t) return;
+  const tab = terminals.get(id);
+  if (!tab) return;
   window.api.termClose(id);
-  t.term.dispose();
-  t.el.remove();
+  tab.term.dispose();
+  tab.el.remove();
   terminals.delete(id);
   activateTerm([...terminals.keys()].pop() ?? null);
 }
@@ -529,7 +542,7 @@ document.addEventListener('mousemove', (e) => {
       cursor.className = 'cursor';
       cursor.style.left = `${e.clientX - rect.left}px`;
       chart.append(cursor);
-      showTip(`${new Date(p.t).toLocaleTimeString('ru')}\nВходящий ${formatSpeed(p.rx)}\nИсходящий ${formatSpeed(p.tx)}\nCPU ${p.cpu === null ? '—' : `${p.cpu.toFixed(0)}%`}`, e.clientX, e.clientY);
+      showTip(t('ov.chartTip', { time: new Date(p.t).toLocaleTimeString(I18N.locale()), rx: formatSpeed(p.rx), tx: formatSpeed(p.tx), cpu: p.cpu === null ? '—' : `${p.cpu.toFixed(0)}%` }), e.clientX, e.clientY);
       return;
     }
   }
@@ -544,11 +557,11 @@ document.addEventListener('submit', (e) => {
   const serverId = form.dataset.keyForm;
   const name = form.elements.key.value.trim();
   if (!name || keyBusy.has(serverId)) return;
-  keyOperation(serverId, `Добавляю ${name}…`, async () => {
+  keyOperation(serverId, t('keys.adding', { name }), async () => {
     const result = await window.api.keysAdd(serverId, name, form.elements.profile?.value);
     if (result.cancelled) return '';
-    showLinks(`Новый ключ: ${name}`, result.links);
-    return `Ключ ${name} добавлен`;
+    showLinks(t('keys.newKeyTitle', { name }), result.links);
+    return t('keys.added', { name });
   });
 });
 
@@ -565,7 +578,7 @@ document.addEventListener('click', (e) => {
   if ('modalClose' in d) closeModal();
   if (d.copy) {
     navigator.clipboard.writeText(d.copy);
-    el.textContent = 'Скопировано';
+    el.textContent = t('common.copied');
   }
   if (d.entry) {
     ui.entry = d.entry;
@@ -578,15 +591,15 @@ document.addEventListener('click', (e) => {
   }
   if (d.keyDelete && !keyBusy.has(d.server)) {
     const { keyDelete: name, server } = d;
-    keyOperation(server, `Удаляю ${name}…`, async () => {
+    keyOperation(server, t('keys.deleting', { name }), async () => {
       const result = await window.api.keysDelete(server, name);
-      return result.cancelled ? '' : `Ключ ${name} удалён`;
+      return result.cancelled ? '' : t('keys.deletedMsg', { name });
     });
   }
   if (d.keyLinks) {
     const { keyLinks: name, server } = d;
     window.api.keysLinks(server, name)
-      .then((links) => showLinks(`Ключ: ${name}`, links, { server, name }))
+      .then((links) => showLinks(t('keys.keyTitle', { name }), links, { server, name }))
       .catch((err) => { keyMessages.set(server, { text: cleanError(err), error: true }); renderKeysView(); });
   }
   if (d.view) setView(d.view);
@@ -600,10 +613,10 @@ window.addEventListener('resize', fitActive);
 
 window.api.onTermData(({ id, data }) => terminals.get(id)?.term.write(data));
 window.api.onTermExit(({ id }) => {
-  const t = terminals.get(id);
-  if (!t) return;
-  t.ended = true;
-  t.term.write('\r\n[соединение закрыто]\r\n');
+  const tab = terminals.get(id);
+  if (!tab) return;
+  tab.ended = true;
+  tab.term.write(`\r\n${t('term.closedLine')}\r\n`);
   renderTermBar();
 });
 
@@ -621,7 +634,27 @@ window.api.onServerUpdate((s) => {
   if (ui.view === 'keys' && ui.entry === s.id) refreshKeySpeeds(s);
 });
 
+// --- Язык ---
+
+// Статичные надписи из index.html помечены data-i18n="ключ".
+function applyStaticTexts() {
+  document.documentElement.lang = I18N.getLang();
+  for (const el of document.querySelectorAll('[data-i18n]')) el.textContent = t(el.dataset.i18n);
+  $('lang-select').value = I18N.getLang();
+}
+
+// Смена языка без перезапуска: главный процесс запоминает выбор, окно перерисовывается.
+$('lang-select').addEventListener('change', async (e) => {
+  I18N.setLang(await window.api.setLang(e.target.value));
+  applyStaticTexts();
+  renderSide();
+  renderTermBar();
+  setView(ui.view);
+});
+
 (async () => {
+  I18N.setLang(await window.api.getLang());
+  applyStaticTexts();
   for (const s of await window.api.getServers()) servers.set(s.id, s);
   renderSide();
   renderOverview();

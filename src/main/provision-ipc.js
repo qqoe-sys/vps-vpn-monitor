@@ -1,6 +1,7 @@
 'use strict';
 // Мастер настройки серверов и удаление настроек: связь интерфейса с шагами установки.
 
+const i18n = require('../i18n');
 const crypto = require('node:crypto');
 const fs = require('node:fs');
 const path = require('node:path');
@@ -28,7 +29,7 @@ const LIVE_INVENTORY_MS = 20000; // сколько ждём ответа ста�
 async function runRemove(connectFn, server, flags) {
   const keyRemoved = flags.includes('app-key');
   const { text, assumed } = await runDetached(connectFn, server, fs.readFileSync(REMOVE_SCRIPT, 'utf8'), flags, { keyRemoved });
-  if (!assumed && !text.includes('"removed"')) throw new Error('Сервер не смог выполнить удаление');
+  if (!assumed && !text.includes('"removed"')) throw new Error(i18n.t('ipc.removeFailed'));
 }
 
 function registerProvisionIpc(app) {
@@ -40,12 +41,12 @@ function registerProvisionIpc(app) {
   const askHostKey = (host) => async (fp) => {
     const { response } = await dialog.showMessageBox(win(), {
       type: 'question',
-      buttons: ['Отмена', 'Доверять'],
+      buttons: [i18n.t('main.cancel'), i18n.t('ipc.trust')],
       defaultId: 1,
       cancelId: 0,
-      title: 'Новый сервер',
-      message: `Подключиться к ${host}?`,
-      detail: `Отпечаток сервера:\n${fp}\n\nОн будет запомнен: при подмене сервера программа откажется подключаться.`,
+      title: i18n.t('setup.newServer'),
+      message: i18n.t('ipc.connectQ', { host }),
+      detail: i18n.t('ipc.fingerprint', { fp }),
     });
     return response === 1;
   };
@@ -106,7 +107,7 @@ function registerProvisionIpc(app) {
   const progress = (e) => send('provision:progress', e);
 
   ipcMain.handle('provision:start', async (_e, plan) => {
-    if (running) throw new Error('Настройка уже идёт');
+    if (running) throw new Error(i18n.t('ipc.running'));
     validatePlan(plan);
     for (const t of plan.targets) t.id = serverIdFor(t.host);
     addServers(getConfig(), plan.targets); // заранее отказывает, если сервер уже добавлен
@@ -141,7 +142,7 @@ function registerProvisionIpc(app) {
 
   // Замена входа: новый VPS получает тех же клиентов и подключается к тому же выходу.
   ipcMain.handle('provision:replace', async (_e, oldId, form) => {
-    if (running) throw new Error('Настройка уже идёт');
+    if (running) throw new Error(i18n.t('ipc.running'));
     const old = findServer(oldId);
     const target = { host: form?.host, password: form?.password, name: String(form?.name ?? '').trim(), limit: form?.limit };
     // Форма проверяется теми же правилами, что в мастере. Порты здесь не задаются (их берём
@@ -151,15 +152,15 @@ function registerProvisionIpc(app) {
     // Всухую: отказ для выхода, уже заменённого входа или адреса, который уже есть в программе.
     markReplaced(getConfig(), oldId, { id: target.id, host: target.host });
     const exit = getConfig().servers.find((s) => s.host === old.exitHost);
-    if (!exit) throw new Error(`Выход ${old.exitHost} не найден в программе`);
+    if (!exit) throw new Error(i18n.t('ipc.exitNotFound', { host: old.exitHost }));
 
     running = true;
     try {
       const picked = pickClients({ live: await liveInventory(old), cache: loadInventoryCache(cacheFile, old.id) });
       if (picked.stale && !(await confirmChange(
-        'Старый вход не отвечает, а копия клиентов устарела',
-        `Копия списка клиентов сохранена ${new Date(picked.savedAt).toLocaleString('ru-RU')}. Ключи, добавленные позже, на новый вход не попадут. Продолжить с этой копией?`,
-        'Замена входа',
+        i18n.t('ipc.staleQ'),
+        i18n.t('ipc.staleDetail', { when: new Date(picked.savedAt).toLocaleString(i18n.locale()) }),
+        i18n.t('ipc.replaceTitle'),
       ))) return { cancelled: true };
       const plan = makeReplacePlan({ target, old, exit, picked, cleanIncomplete: form?.cleanIncomplete });
 
@@ -178,7 +179,7 @@ function registerProvisionIpc(app) {
         try {
           subsResult = await subs.switchEntry(server.id);
         } catch (err) {
-          subsResult = { published: false, error: true, message: `Подписки не переключены: ${err.message}` };
+          subsResult = { published: false, error: true, message: i18n.t('ipc.subsNotSwitched', { err: err.message }) };
         }
       }
       return { ok: true, keys: await keysFor([server]), subs: subsResult };
@@ -191,13 +192,13 @@ function registerProvisionIpc(app) {
 
   const findServer = (id) => {
     const server = getConfig().servers.find((s) => s.id === id);
-    if (!server) throw new Error('Неизвестный сервер');
+    if (!server) throw new Error(i18n.t('main.unknownServer'));
     return server;
   };
 
   // Пока мастер работает, он держит записи серверов: менять список под ним нельзя.
   const assertIdle = () => {
-    if (running) throw new Error('Сейчас идёт настройка или замена сервера: дождись её окончания');
+    if (running) throw new Error(i18n.t('ipc.busyWizard'));
   };
 
   // Сервер id убран из программы: снимаем пометку «заменён» со старых входов, которые на него
@@ -213,28 +214,28 @@ function registerProvisionIpc(app) {
 
   async function confirm(message, detail) {
     const { response } = await dialog.showMessageBox(win(), {
-      type: 'warning', buttons: ['Отмена', 'Да, удалить'], defaultId: 0, cancelId: 0, title: 'Удаление', message, detail,
+      type: 'warning', buttons: [i18n.t('main.cancel'), i18n.t('ipc.yesDelete')], defaultId: 0, cancelId: 0, title: i18n.t('ipc.deleteTitle'), message, detail,
     });
     return response === 1;
   }
 
   async function saveConfigBackup(server, transport) {
     const out = await transport.exec('cat "$(systemctl show xray -p ExecStart --value | grep -oE \'/[^ ;]*config.json\' | head -1)"', 15000);
-    const { canceled, filePath } = await dialog.showSaveDialog(win(), { title: 'Бэкап конфига Xray', defaultPath: `xray-${server.id}.json` });
+    const { canceled, filePath } = await dialog.showSaveDialog(win(), { title: i18n.t('ipc.backupTitle'), defaultPath: `xray-${server.id}.json` });
     if (!canceled && filePath) fs.writeFileSync(filePath, out, { mode: 0o600 });
   }
 
   ipcMain.handle('server:remove-settings', async (_e, id, typedName, wantBackup) => {
     assertIdle();
     const server = findServer(id);
-    if (typedName !== server.name) throw new Error('Имя сервера введено неверно');
+    if (typedName !== server.name) throw new Error(i18n.t('ipc.nameMismatch'));
     if (server.managed) assertCanDropAppKey(app.getState(id));
     const related = getConfig().servers.find((s) => s.exitHost === server.host || server.exitHost === s.host);
     const scope = server.managed
-      ? 'Будут удалены Xray, ключи VPN, учёт трафика и правила файрвола для VPN. Вход по паролю останется.'
-      : 'Этот сервер настраивался вручную: будет удалён только сборщик трафика и его история. Xray и ключи останутся.';
-    const cascadeNote = server.managed && related ? `\n\nКаскад с ${related.name} перестанет работать.` : '';
-    if (!(await confirm('Вы точно хотите удалить все настройки?', `${server.name}. ${scope}${cascadeNote}`))) return { cancelled: true };
+      ? i18n.t('ipc.removeManaged')
+      : i18n.t('ipc.removeManual');
+    const cascadeNote = server.managed && related ? `\n\n${i18n.t('ipc.cascadeBreaks', { name: related.name })}` : '';
+    if (!(await confirm(i18n.t('ipc.removeQ'), `${server.name}. ${scope}${cascadeNote}`))) return { cancelled: true };
     if (wantBackup && server.managed) {
       const transport = await keyAuth(server);
       try {
@@ -253,9 +254,9 @@ function registerProvisionIpc(app) {
 
   ipcMain.handle('server:remove-app-key', async (_e, id) => {
     const server = findServer(id);
-    if (!server.managed) throw new Error('У этого сервера ключ управляется вручную');
+    if (!server.managed) throw new Error(i18n.t('ipc.manualKey'));
     assertCanDropAppKey(app.getState(id));
-    if (!(await confirm('Удалить ключ доступа приложения?', `${server.name}. Вход по паролю останется. Программа перестанет видеть сервер, пока ты не подключишь его снова.`))) return { cancelled: true };
+    if (!(await confirm(i18n.t('ipc.removeKeyQ'), `${server.name}. ${i18n.t('ipc.removeKeyDetail')}`))) return { cancelled: true };
     await runRemove(keyAuth, server, '--only-app-key');
     dropMonitor(id);
     const updated = { ...server, noAccess: true };
@@ -269,8 +270,8 @@ function registerProvisionIpc(app) {
     assertIdle();
     const server = findServer(id);
     // Заменённый вход тоже можно убрать: его клиенты уже на новом входе.
-    if (!server.managed && !server.replacedBy) throw new Error('Нынешние серверы так убрать нельзя');
-    if (!(await confirm(`Убрать ${server.name} из программы?`, 'На самом сервере ничего не изменится: настройки и ключ приложения останутся там.'))) return { cancelled: true };
+    if (!server.managed && !server.replacedBy) throw new Error(i18n.t('ipc.cannotForget'));
+    if (!(await confirm(i18n.t('ipc.forgetQ', { name: server.name }), i18n.t('ipc.forgetDetail')))) return { cancelled: true };
     dropMonitor(id);
     dropFromConfig(id);
     return { done: true };
@@ -284,12 +285,12 @@ function registerProvisionIpc(app) {
     const allowed = canCloseExitAccess({ server: old, subsEntry: subsState.entry, subsPending: subsState.pending, subsInUse: subsState.inUse });
     if (!allowed.ok) throw new Error(allowed.reason);
     const exit = getConfig().servers.find((s) => s.host === old.exitHost);
-    if (!exit?.keyPath) throw new Error('Выход не найден в программе или у него нет ключа доступа');
+    if (!exit?.keyPath) throw new Error(i18n.t('ipc.exitNoAccess'));
     exitAccessDeleteCommand(old.host, 1); // адрес проверяем ещё до окна подтверждения
     if (!(await confirmChange(
-      `Закрыть доступ ${old.name} на ${exit.name}?`,
-      `На выходе будет удалено правило UFW, которое пускает ${old.host} на порт звена. Xray выхода не перезапускается. Старый вход перестанет выводить клиентов в интернет.`,
-      'Замена входа',
+      i18n.t('ipc.closeQ', { old: old.name, exit: exit.name }),
+      i18n.t('ipc.closeDetail', { host: old.host }),
+      i18n.t('ipc.replaceTitle'),
     ))) return { cancelled: true };
     const transport = await keyAuth(exit);
     try {
@@ -301,9 +302,9 @@ function registerProvisionIpc(app) {
       // Так правило выглядит в `ufw show added`: удаляем, только если оно есть.
       const rule = command.replace(/^ufw delete /, 'ufw ');
       const res = await transport.exec(`if ufw show added | grep -qxF '${rule}'; then ${command} >/dev/null 2>&1 && echo '@@removed'; else echo '@@absent'; fi`, 30000);
-      if (res.includes('@@absent')) return { done: true, message: 'Правила для старого входа на выходе уже нет.' };
-      if (!res.includes('@@removed')) throw new Error('Не удалось удалить правило на выходе');
-      return { done: true, message: 'Доступ старому входу на выходе закрыт.' };
+      if (res.includes('@@absent')) return { done: true, message: i18n.t('ipc.ruleAbsent') };
+      if (!res.includes('@@removed')) throw new Error(i18n.t('ipc.ruleRemoveFailed'));
+      return { done: true, message: i18n.t('ipc.ruleRemoved') };
     } finally {
       transport.close();
     }
@@ -318,9 +319,9 @@ function registerProvisionIpc(app) {
     const newName = getConfig().servers.find((s) => s.id === newId)?.name ?? newId;
     const subsOnNew = subs.currentEntry() === newId;
     if (!(await confirmChange(
-      `Отменить замену ${old.name}?`,
-      `${old.name} снова станет действующим входом, ${newName} останется в списке обычным входом. Если доступ старому входу на выходе уже закрыт, клиенты через него не пойдут.${subsOnNew ? ' Подписки будут переключены обратно на старый вход (с подтверждением публикации).' : ''}`,
-      'Замена входа',
+      i18n.t('ipc.undoQ', { name: old.name }),
+      `${i18n.t('ipc.undoDetail', { old: old.name, new: newName })}${subsOnNew ? ` ${i18n.t('ipc.undoSubs')}` : ''}`,
+      i18n.t('ipc.replaceTitle'),
     ))) return { cancelled: true };
     setConfig(undoReplace(getConfig(), oldId).config); // заново от текущего конфига: он мог измениться, пока ждали ответа
     dropMonitor(oldId);
@@ -330,7 +331,7 @@ function registerProvisionIpc(app) {
       try {
         subsResult = await subs.switchEntry(oldId);
       } catch (err) {
-        subsResult = { published: false, error: true, message: `Подписки не переключены: ${err.message}` };
+        subsResult = { published: false, error: true, message: i18n.t('ipc.subsNotSwitched', { err: err.message }) };
       }
     }
     return { done: true, subs: subsResult };
@@ -338,7 +339,7 @@ function registerProvisionIpc(app) {
 
   ipcMain.handle('server:reconnect', async (_e, id, password) => {
     const server = findServer(id);
-    if (typeof password !== 'string' || !password) throw new Error('Введи пароль');
+    if (typeof password !== 'string' || !password) throw new Error(i18n.t('ipc.enterPass'));
     const parsed = utils.parseKey(fs.readFileSync(server.keyPath));
     const line = `${parsed.type} ${parsed.getPublicSSH().toString('base64')} vpsmon`;
     const transport = await connect({ host: server.host, user: 'root' }, { password, onHostKey: askHostKey(server.host) });
@@ -349,7 +350,7 @@ grep -qxF '${line}' /root/.ssh/authorized_keys || echo '${line}' >> /root/.ssh/a
 chmod 600 /root/.ssh/authorized_keys
 `).toString('base64');
       const out = await transport.exec(`echo ${script} | base64 -d | bash 2>&1; echo "@@rc=$?"`, 20000);
-      if (!/@@rc=0\s*$/.test(out)) throw new Error('Не удалось вернуть ключ');
+      if (!/@@rc=0\s*$/.test(out)) throw new Error(i18n.t('ipc.keyRestoreFailed'));
     } finally {
       transport.close();
     }
@@ -363,7 +364,7 @@ chmod 600 /root/.ssh/authorized_keys
 
   ipcMain.handle('limits:set', (_e, id, limit) => {
     if (!(limit?.tb > 0) || !Number.isInteger(limit.resetDay) || limit.resetDay < 1 || limit.resetDay > 31 || !['both', 'down', 'up'].includes(limit.mode)) {
-      throw new Error('Некорректный лимит');
+      throw new Error(i18n.t('ipc.badLimit'));
     }
     const server = findServer(id);
     const core = { tb: limit.tb, resetDay: limit.resetDay, mode: limit.mode };

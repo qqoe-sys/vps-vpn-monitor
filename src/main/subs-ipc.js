@@ -3,6 +3,7 @@
 // Любое изменение на сервере идёт только после окна подтверждения (confirmChange).
 // Коды ссылок и UUID в сообщения об ошибках не попадают.
 
+const i18n = require('../i18n');
 const path = require('node:path');
 const { ipcMain } = require('electron');
 const subsCfg = require('../core/subs-config');
@@ -16,14 +17,14 @@ function registerSubsIpc({ getConfig, connect, withInventory, confirmChange, wit
   let busy = false;
 
   // Если вход/выход для подписок ещё не выбраны, подставляем первый каскад из списка серверов.
-  const load = () => subsCfg.resolveCascade(subs ??= subsCfg.loadSubs(subsFile), getConfig().servers);
+  const load = () => subsCfg.resolveCascade(subs ??= subsCfg.loadSubs(subsFile, i18n.getLang()), getConfig().servers);
   // Флаг pending хранится в файле: после перезапуска программа помнит, что сайт устарел.
   const save = (next, pending = true) => { const s = { ...next, pending }; subsCfg.saveSubs(subsFile, s); subs = s; };
 
   function server(id) {
-    if (id === null) throw new Error('Нет каскада: сначала добавь вход и выход (кнопка «+ Добавить сервер», режим «Каскад»)');
+    if (id === null) throw new Error(i18n.t('sipc.noCascade'));
     const s = getConfig().servers.find((x) => x.id === id);
-    if (!s) throw new Error(`Сервер ${id} не найден в программе`);
+    if (!s) throw new Error(i18n.t('sipc.serverNotFound', { id }));
     return s;
   }
   // Пока сайт не установлен (нет домена), можно выбрать вход любого каскада.
@@ -41,7 +42,7 @@ function registerSubsIpc({ getConfig, connect, withInventory, confirmChange, wit
   }
 
   async function exclusive(fn) {
-    if (busy) throw new Error('Уже идёт операция с сайтом, подожди');
+    if (busy) throw new Error(i18n.t('sipc.busy'));
     busy = true;
     try { return await fn(); } finally { busy = false; }
   }
@@ -52,24 +53,24 @@ function registerSubsIpc({ getConfig, connect, withInventory, confirmChange, wit
   }
 
   function cacheNote(cachedAt) {
-    return cachedAt ? `Вход не ответил: использованы ключи, сохранённые ${new Date(cachedAt).toLocaleString('ru-RU')}.` : '';
+    return cachedAt ? i18n.t('sipc.cacheNote', { when: new Date(cachedAt).toLocaleString(i18n.locale()) }) : '';
   }
 
   // Публикация целиком: собрать сайт, спросить подтверждение, залить на выход.
   async function publishFlow({ askConfirm = true } = {}) {
     const s = load();
-    if (!s.site.domain) return { published: false, message: 'Укажи домен в настройках сайта, потом опубликуй.' };
+    if (!s.site.domain) return { published: false, message: i18n.t('sipc.needDomain') };
     const exit = server(s.site.host);
     const { inventory: inv, cachedAt } = await inventory();
     const built = await buildSite(s, inv, server(s.cascade.entry));
     if (askConfirm && !(await confirmChange(
-      `Опубликовать сайт на ${exit.name}?`,
-      `Будет обновлено ссылок: ${s.people.length}. Сайт заменится целиком. Xray не перезапускается. ${cacheNote(cachedAt)}`,
-      'Сайт подписок',
-    ))) return { published: false, cancelled: true, message: 'Публикация отменена: изменения сохранены только на ПК.' };
+      i18n.t('sipc.publishQ', { name: exit.name }),
+      `${i18n.t('sipc.publishDetail', { n: s.people.length })} ${cacheNote(cachedAt)}`,
+      i18n.t('sipc.title'),
+    ))) return { published: false, cancelled: true, message: i18n.t('sipc.publishCancelled') };
     await withTransport(exit, (t) => publish(t, built));
     save(load(), false);
-    return { published: true, message: `Сайт опубликован. ${cacheNote(cachedAt)}`.trim() };
+    return { published: true, message: `${i18n.t('sipc.published')} ${cacheNote(cachedAt)}`.trim() };
   }
 
   // После изменения сразу предлагаем опубликовать; отказ не отменяет локальное изменение.
@@ -78,7 +79,7 @@ function registerSubsIpc({ getConfig, connect, withInventory, confirmChange, wit
     try {
       return await publishFlow();
     } catch (err) {
-      return { published: false, error: true, message: `Сохранено на ПК, но не опубликовано: ${err.message}` };
+      return { published: false, error: true, message: i18n.t('sipc.savedNotPublished', { err: err.message }) };
     }
   }
 
@@ -106,27 +107,28 @@ function registerSubsIpc({ getConfig, connect, withInventory, confirmChange, wit
 
   ipcMain.handle('subs:add', (_e, name, key) => exclusive(async () => {
     const { inventory: inv } = await inventory();
-    if (!xhttpKeys(inv).includes(key)) throw new Error(`На входе нет XHTTP-ключа ${key}`);
+    if (!xhttpKeys(inv).includes(key)) throw new Error(i18n.t('sipc.noXhttpKey', { key }));
     return changeAndPublish(subsCfg.addPerson(load(), name, key));
   }));
 
   ipcMain.handle('subs:reissue', (_e, id) => exclusive(async () => {
     const p = load().people.find((x) => x.id === id);
-    if (!p) throw new Error('Человек не найден');
-    if (!(await confirmChange(`Перевыпустить ссылку для «${p.name}»?`, 'Старая ссылка перестанет работать после публикации. Ключ Xray не меняется.', 'Сайт подписок'))) return { cancelled: true };
+    if (!p) throw new Error(i18n.t('sipc.personNotFound'));
+    if (!(await confirmChange(i18n.t('sipc.reissueQ', { name: p.name }), i18n.t('sipc.reissueDetail'), i18n.t('sipc.title')))) return { cancelled: true };
     return changeAndPublish(subsCfg.reissue(load(), id));
   }));
 
   ipcMain.handle('subs:remove', (_e, id) => exclusive(async () => {
     const p = load().people.find((x) => x.id === id);
-    if (!p) throw new Error('Человек не найден');
-    if (!(await confirmChange(`Удалить «${p.name}» из подписок?`, 'Его ссылка перестанет работать после публикации. Ключ Xray не удаляется: это делается во вкладке «Ключи и трафик».', 'Сайт подписок'))) return { cancelled: true };
+    if (!p) throw new Error(i18n.t('sipc.personNotFound'));
+    if (!(await confirmChange(i18n.t('sipc.removeQ', { name: p.name }), i18n.t('sipc.removeDetail'), i18n.t('sipc.title')))) return { cancelled: true };
     return changeAndPublish(subsCfg.removePerson(load(), id));
   }));
 
   ipcMain.handle('subs:settings', (_e, form) => exclusive(async () => {
     const s = load();
-    if (!entries().some((e) => e.id === form.entry)) throw new Error('Вход каскада должен вести на выход, где стоит сайт');
+    if (form.entry === null) throw new Error(i18n.t('sipc.noCascade'));
+    if (!entries().some((e) => e.id === form.entry)) throw new Error(i18n.t('sipc.entryMismatch'));
     const exit = subsCfg.exitOf(getConfig().servers, server(form.entry));
     const next = {
       ...s,
@@ -140,7 +142,7 @@ function registerSubsIpc({ getConfig, connect, withInventory, confirmChange, wit
       },
       cascade: { entry: form.entry, exit: exit.id },
     };
-    return changeAndPublish(next);
+    return changeAndPublish(subsCfg.switchSiteLang(next, form.lang));
   }));
 
   ipcMain.handle('subs:apps', (_e, apps) => exclusive(async () => changeAndPublish({ ...load(), apps })));
@@ -149,20 +151,20 @@ function registerSubsIpc({ getConfig, connect, withInventory, confirmChange, wit
 
   ipcMain.handle('subs:install', () => exclusive(async () => {
     const s = load();
-    if (!s.site.domain) throw new Error('Сначала укажи домен и сохрани настройки');
+    if (!s.site.domain) throw new Error(i18n.t('sipc.domainFirst'));
     const exit = server(s.site.host);
     await checkDns(s.site.domain, exit.host);
     if (!(await confirmChange(
-      `Установить сайт подписок на ${exit.name}?`,
-      `Будет сделано:\n• установлен Caddy из официального репозитория (если ещё не стоит);\n• открыты порты 80 (только для сертификата) и ${s.site.port} в UFW;\n• создана папка /var/www/vpsmon-sub;\n• опубликован сайт.\nXray и порт 443 не трогаются.`,
-      'Сайт подписок',
+      i18n.t('sipc.installQ', { name: exit.name }),
+      i18n.t('sipc.installDetail', { port: s.site.port }),
+      i18n.t('sipc.title'),
     ))) return { cancelled: true };
     await withTransport(exit, (t) => install(t, s.site.port));
     return publishFlow({ askConfirm: false });
   }));
 
   ipcMain.handle('subs:qr', async (_e, url) => {
-    if (typeof url !== 'string' || !url.startsWith('https://')) throw new Error('Некорректная ссылка');
+    if (typeof url !== 'string' || !url.startsWith('https://')) throw new Error(i18n.t('sipc.badUrl'));
     return (await withQr([{ label: 'sub', url }]))[0].qr;
   });
 

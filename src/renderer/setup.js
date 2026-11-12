@@ -10,11 +10,11 @@ const num = (form, name) => Number(value(form, name));
 function serverFields(n, label) {
   return `<fieldset class="setup-box"><legend>${label}</legend>
     <div class="fields">
-      <label>Название<input name="name${n}" required autocomplete="off"></label>
-      <label>IP-адрес<input name="host${n}" required autocomplete="off"></label>
-      <label>Пароль root<input name="pass${n}" type="password" required autocomplete="off"></label>
-      <label>Лимит, ТБ<input name="tb${n}" type="number" min="0.1" step="0.1" value="3" required></label>
-      <label>День сброса<input name="reset${n}" type="number" min="1" max="31" value="1" required></label>
+      <label>${t('setup.name')}<input name="name${n}" required autocomplete="off"></label>
+      <label>${t('setup.ip')}<input name="host${n}" required autocomplete="off"></label>
+      <label>${t('setup.rootPass')}<input name="pass${n}" type="password" required autocomplete="off"></label>
+      <label>${t('setup.limitTb')}<input name="tb${n}" type="number" min="0.1" step="0.1" value="3" required></label>
+      <label>${t('setup.resetDay')}<input name="reset${n}" type="number" min="1" max="31" value="1" required></label>
     </div>
   </fieldset>`;
 }
@@ -27,19 +27,19 @@ function replaceForm() {
   const tb = old?.limit?.config?.tb ?? 3;
   const day = old?.limit?.config?.resetDay ?? 1;
   return `<form id="replace-form">
-    <p class="note">Новый сервер получит тех же клиентов (те же UUID и имена ключей) и те же порты, что у «${esc(old?.name ?? wizard.replaceId)}». Старый вход останется в списке и продолжит работать, пока ты его не закроешь.</p>
-    <fieldset class="setup-box"><legend>Новый сервер</legend>
+    <p class="note">${esc(t('setup.replaceNote', { name: old?.name ?? wizard.replaceId }))}</p>
+    <fieldset class="setup-box"><legend>${t('setup.newServer')}</legend>
       <div class="fields">
-        <label>Название<input name="name" required autocomplete="off" value="${esc(old ? `${old.name} (новый)` : '')}"></label>
-        <label>IP-адрес<input name="host" required autocomplete="off"></label>
-        <label>Пароль root<input name="pass" type="password" required autocomplete="off"></label>
-        <label>Лимит, ТБ<input name="tb" type="number" min="0.1" step="0.1" value="${esc(tb)}" required></label>
-        <label>День сброса<input name="resetDay" type="number" min="1" max="31" value="${esc(day)}" required></label>
+        <label>${t('setup.name')}<input name="name" required autocomplete="off" value="${esc(old ? t('setup.newName', { name: old.name }) : '')}"></label>
+        <label>${t('setup.ip')}<input name="host" required autocomplete="off"></label>
+        <label>${t('setup.rootPass')}<input name="pass" type="password" required autocomplete="off"></label>
+        <label>${t('setup.limitTb')}<input name="tb" type="number" min="0.1" step="0.1" value="${esc(tb)}" required></label>
+        <label>${t('setup.resetDay')}<input name="resetDay" type="number" min="1" max="31" value="${esc(day)}" required></label>
       </div>
     </fieldset>
-    ${wizard.error?.includes('не завершена') ? '<label class="setup-clean"><input type="checkbox" name="clean" checked> Убрать следы незавершённой установки и повторить</label>' : ''}
-    <p class="note">Перед изменением сервера будут проверены ОС и занятые порты. Если что-то пойдёт не так, изменения откатятся.</p>
-    <button class="btn setup-start">Заменить</button>
+    ${wizard.error?.includes(t('prov.incomplete')) ? `<label class="setup-clean"><input type="checkbox" name="clean" checked> ${t('setup.cleanRetry')}</label>` : ''}
+    <p class="note">${t('setup.checksNote')}</p>
+    <button class="btn setup-start">${t('setup.replaceBtn')}</button>
   </form>`;
 }
 
@@ -49,25 +49,25 @@ function setupForm() {
   const both = wizard.mode === 'both';
   return `<form id="setup-form">
     <div class="setup-modes">
-      ${[['single', 'Одиночный VPN'], ['cascade', 'Каскад из двух серверов'], ['both', 'Каскад и одиночный на входном']].map(([m, t]) => `
-        <label><input type="radio" name="mode" value="${m}" ${m === wizard.mode ? 'checked' : ''}> ${t}</label>`).join('')}
+      ${[['single', 'setup.modeSingle'], ['cascade', 'setup.modeCascade'], ['both', 'setup.modeBoth']].map(([m, k]) => `
+        <label><input type="radio" name="mode" value="${m}" ${m === wizard.mode ? 'checked' : ''}> ${t(k)}</label>`).join('')}
     </div>
-    ${serverFields(0, two ? 'Сервер 1' : 'Сервер')}
-    ${two ? serverFields(1, 'Сервер 2') : ''}
-    ${two ? `<fieldset class="setup-box"><legend>Какой сервер входной</legend>
+    ${serverFields(0, two ? t('setup.serverN', { n: 1 }) : t('setup.server'))}
+    ${two ? serverFields(1, t('setup.serverN', { n: 2 })) : ''}
+    ${two ? `<fieldset class="setup-box"><legend>${t('setup.whichEntry')}</legend>
       <div class="setup-modes">
-        <label><input type="radio" name="entry" value="0" ${wizard.entry === 0 ? 'checked' : ''}> Сервер 1</label>
-        <label><input type="radio" name="entry" value="1" ${wizard.entry === 1 ? 'checked' : ''}> Сервер 2</label>
+        <label><input type="radio" name="entry" value="0" ${wizard.entry === 0 ? 'checked' : ''}> ${t('setup.serverN', { n: 1 })}</label>
+        <label><input type="radio" name="entry" value="1" ${wizard.entry === 1 ? 'checked' : ''}> ${t('setup.serverN', { n: 2 })}</label>
       </div></fieldset>` : ''}
-    <fieldset class="setup-box"><legend>Порты (рекомендованные уже указаны)</legend>
+    <fieldset class="setup-box"><legend>${t('setup.ports')}</legend>
       <div class="fields">
         ${portField('XHTTP', 'xhttp', 443)}${portField('Vision', 'vision', 8443)}
-        ${both ? `${portField('Одиночный XHTTP', 'xhttp2', 2053)}${portField('Одиночный Vision', 'vision2', 2083)}` : ''}
-        ${two ? portField('Порт выходного сервера', 'exitPort', 443) : ''}
+        ${both ? `${portField(t('setup.singleXhttp'), 'xhttp2', 2053)}${portField(t('setup.singleVision'), 'vision2', 2083)}` : ''}
+        ${two ? portField(t('setup.exitPort'), 'exitPort', 443) : ''}
       </div></fieldset>
-    ${wizard.error?.includes('не завершена') ? '<label class="setup-clean"><input type="checkbox" name="clean" checked> Убрать следы незавершённой установки и повторить</label>' : ''}
-    <p class="note">Вход по паролю на сервере останется. Перед изменением сервера будут проверены ОС и занятые порты. Если что-то пойдёт не так, изменения откатятся.</p>
-    <button class="btn setup-start">Настроить</button>
+    ${wizard.error?.includes(t('prov.incomplete')) ? `<label class="setup-clean"><input type="checkbox" name="clean" checked> ${t('setup.cleanRetry')}</label>` : ''}
+    <p class="note">${t('setup.passKept')} ${t('setup.checksNote')}</p>
+    <button class="btn setup-start">${t('setup.start')}</button>
   </form>`;
 }
 
@@ -98,26 +98,26 @@ const STEP_ICON = { run: '…', ok: '✓', fail: '✕', undo: '↩', 'undo-faile
 
 function setupProgress() {
   const steps = wizard.steps.map((s) => `<li class="step ${s.state}"><span>${STEP_ICON[s.state] ?? ''}</span> ${esc(s.title)}${s.detail ? `<small>${esc(s.detail)}</small>` : ''}</li>`).join('');
-  const sni = wizard.sni ? `<div class="setup-box"><b>Выбери SNI для ${esc(wizard.sni.host)}</b>
-    ${wizard.sni.list.length ? wizard.sni.list.map((x, i) => `<label class="sni-row"><input type="radio" name="sni" value="${esc(x.domain)}" ${i === 0 ? 'checked' : ''}> ${esc(x.domain)} <small>${esc(x.ms)} мс</small></label>`).join('') : '<p class="empty">Подходящих сайтов не нашлось, введи домен сам.</p>'}
-    <label class="sni-row">Свой домен <input id="sni-custom" autocomplete="off"></label>
-    <button class="btn" data-sni-confirm>Продолжить</button></div>` : '';
+  const sni = wizard.sni ? `<div class="setup-box"><b>${esc(t('setup.sniPick', { host: wizard.sni.host }))}</b>
+    ${wizard.sni.list.length ? wizard.sni.list.map((x, i) => `<label class="sni-row"><input type="radio" name="sni" value="${esc(x.domain)}" ${i === 0 ? 'checked' : ''}> ${esc(x.domain)} <small>${esc(t('setup.ms', { ms: x.ms }))}</small></label>`).join('') : `<p class="empty">${t('setup.sniNone')}</p>`}
+    <label class="sni-row">${t('setup.sniCustom')} <input id="sni-custom" autocomplete="off"></label>
+    <button class="btn" data-sni-confirm>${t('setup.continue')}</button></div>` : '';
   return `<ul class="steps">${steps}</ul>${sni}`;
 }
 
 function setupResult() {
-  if (wizard.error) return `<p class="key-msg error">Остановлено: ${esc(wizard.error)}</p>`;
+  if (wizard.error) return `<p class="key-msg error">${esc(t('setup.stopped', { err: wizard.error }))}</p>`;
   if (!wizard.keys) return '';
   const subsNote = wizard.subs?.message ? `<p class="key-msg subs-note ${wizard.subs.error ? 'error' : ''}">${esc(wizard.subs.message)}</p>` : '';
-  const title = wizard.replaceId ? '✓ Вход заменён, старый вход пока работает' : '✓ Сервер настроен и добавлен в программу';
+  const title = `✓ ${t(wizard.replaceId ? 'setup.replaced' : 'setup.added')}`;
   return `<p class="status ok">${title}</p>${subsNote}
-    ${wizard.keys.length ? `<table><tbody>${wizard.keys.map((k, i) => `<tr><td>${esc(k.server)}</td><td>${esc(k.name)}</td><td class="key-actions"><button class="btn" data-setup-key="${i}">Ссылки и QR</button></td></tr>`).join('')}</tbody></table>` : ''}
-    <p class="setup-actions"><button class="btn" data-setup-reset>${wizard.replaceId ? 'Готово' : 'Добавить ещё'}</button></p>`;
+    ${wizard.keys.length ? `<table><tbody>${wizard.keys.map((k, i) => `<tr><td>${esc(k.server)}</td><td>${esc(k.name)}</td><td class="key-actions"><button class="btn" data-setup-key="${i}">${t('setup.linksQr')}</button></td></tr>`).join('')}</tbody></table>` : ''}
+    <p class="setup-actions"><button class="btn" data-setup-reset>${t(wizard.replaceId ? 'common.done' : 'setup.addMore')}</button></p>`;
 }
 
 function renderSetup() {
   const form = wizard.steps.length && (wizard.running || wizard.keys) ? '' : setupForm();
-  $('setup').innerHTML = `<h2>${wizard.replaceId ? 'Заменить вход' : 'Добавить сервер'}</h2>${form}${setupProgress()}${setupResult()}`;
+  $('setup').innerHTML = `<h2>${t(wizard.replaceId ? 'ov.replaceEntry' : 'setup.title')}</h2>${form}${setupProgress()}${setupResult()}`;
 }
 
 document.addEventListener('change', async (e) => {
@@ -152,7 +152,7 @@ async function submitReplace(form) {
     if (result.ok) {
       wizard.keys = result.keys;
       wizard.subs = result.subs ?? null;
-    } else wizard.error = result.cancelled ? 'отменено' : result.error;
+    } else wizard.error = result.cancelled ? t('common.cancelled') : result.error;
   } catch (err) {
     wizard.error = cleanError(err);
   }
@@ -220,7 +220,7 @@ function openDialog(html) {
 }
 
 function dialogHead(title) {
-  return `<div class="modal-head"><span>${esc(title)}</span><button class="btn" data-modal-close>Закрыть</button></div>`;
+  return `<div class="modal-head"><span>${esc(title)}</span><button class="btn" data-modal-close>${t('common.close')}</button></div>`;
 }
 
 function setActionMessage(id, text, error) {
@@ -249,16 +249,16 @@ function generatePassword(length = 24) {
 function handlePasswordDialog(d) {
   if (d.changePass) {
     const s = servers.get(d.changePass);
-    openDialog(`${dialogHead(`Сменить пароль: ${s.name}`)}
-      <input id="pass-new" type="password" class="wide" placeholder="Новый пароль (от 12 символов)" autocomplete="new-password">
-      <input id="pass-repeat" type="password" class="wide" placeholder="Ещё раз" autocomplete="new-password" style="margin-top:8px">
+    openDialog(`${dialogHead(t('pass.title', { name: s.name }))}
+      <input id="pass-new" type="password" class="wide" placeholder="${t('pass.new')}" autocomplete="new-password">
+      <input id="pass-repeat" type="password" class="wide" placeholder="${t('pass.repeat')}" autocomplete="new-password" style="margin-top:8px">
       <div class="pass-actions">
-        <button class="btn" data-pass-generate>Сгенерировать</button>
-        <label><input type="checkbox" id="pass-show"> Показать</label>
+        <button class="btn" data-pass-generate>${t('pass.generate')}</button>
+        <label><input type="checkbox" id="pass-show"> ${t('pass.show')}</label>
       </div>
-      <p class="note">Программа пароль не запоминает. Сохрани его сам, например в менеджере паролей.</p>
+      <p class="note">${t('pass.note')}</p>
       <p class="key-msg error" id="pass-error"></p>
-      <p class="setup-actions"><button class="btn danger" data-pass-save="${esc(s.id)}">Сменить пароль</button></p>`);
+      <p class="setup-actions"><button class="btn danger" data-pass-save="${esc(s.id)}">${t('ov.changePass')}</button></p>`);
   }
   if ('passGenerate' in d) {
     const value = generatePassword();
@@ -271,10 +271,10 @@ function handlePasswordDialog(d) {
   if (d.passSave) {
     const password = $('pass-new').value;
     if (password !== $('pass-repeat').value) {
-      $('pass-error').textContent = 'Пароли не совпадают';
+      $('pass-error').textContent = t('pass.mismatch');
       return;
     }
-    guarded(d.passSave, () => window.api.changePassword(d.passSave, password), 'Пароль изменён');
+    guarded(d.passSave, () => window.api.changePassword(d.passSave, password), t('pass.changed'));
   }
 }
 
@@ -289,17 +289,17 @@ async function handleServerAdminClick(d) {
   handlePasswordDialog(d);
   const s = servers.get(d.removeSettings ?? d.removeKey ?? d.reconnect ?? d.editLimit);
   if (d.removeSettings) {
-    openDialog(`${dialogHead('Удалить настройки')}
-      <p>Будет удалено только то, что внедрила эта программа. Чтобы продолжить, введи название сервера: <b>${esc(s.name)}</b></p>
+    openDialog(`${dialogHead(t('ov.removeSettings'))}
+      <p>${t('remove.prompt')} <b>${esc(s.name)}</b></p>
       <input id="remove-name" autocomplete="off" class="wide">
-      ${s.managed ? '<label class="setup-clean"><input type="checkbox" id="remove-backup"> Сохранить бэкап конфига на ПК</label>' : ''}
-      <p class="setup-actions"><button class="btn danger" data-confirm-remove="${esc(s.id)}">Удалить</button></p>`);
+      ${s.managed ? `<label class="setup-clean"><input type="checkbox" id="remove-backup"> ${t('remove.backup')}</label>` : ''}
+      <p class="setup-actions"><button class="btn danger" data-confirm-remove="${esc(s.id)}">${t('common.delete')}</button></p>`);
   }
   if (d.confirmRemove) {
     const id = d.confirmRemove;
     const typed = $('remove-name').value;
     const backup = Boolean($('remove-backup')?.checked);
-    guarded(id, () => window.api.removeSettings(id, typed, backup), 'Настройки удалены');
+    guarded(id, () => window.api.removeSettings(id, typed, backup), t('remove.done'));
   }
   if (d.replaceEntry) startReplace(d.replaceEntry);
   if (d.closeExit) {
@@ -308,7 +308,7 @@ async function handleServerAdminClick(d) {
     try {
       const result = await window.api.closeExitAccess(id);
       // message — пояснение от main (например, что правило уже было закрыто)
-      setActionMessage(id, result.cancelled ? '' : `Доступ на выходе закрыт.${result.message ? ` ${result.message}` : ''}`);
+      setActionMessage(id, result.cancelled ? '' : `${t('replace.exitClosed')}${result.message ? ` ${result.message}` : ''}`);
     } catch (err) {
       setActionMessage(id, cleanError(err), true);
     }
@@ -318,39 +318,39 @@ async function handleServerAdminClick(d) {
     try {
       const result = await window.api.undoReplace(id);
       const subsNote = result.subs?.message ? ` ${result.subs.message}` : '';
-      setActionMessage(id, result.cancelled ? '' : `Замена отменена.${subsNote}`, Boolean(result.subs?.error));
+      setActionMessage(id, result.cancelled ? '' : `${t('replace.undone')}${subsNote}`, Boolean(result.subs?.error));
     } catch (err) {
       setActionMessage(id, cleanError(err), true);
     }
   }
-  if (d.forget) guarded(d.forget, () => window.api.forgetServer(d.forget), 'Сервер убран из программы');
-  if (d.removeKey) guarded(s.id, () => window.api.removeAppKey(s.id), 'Ключ доступа удалён, вход по паролю остался');
+  if (d.forget) guarded(d.forget, () => window.api.forgetServer(d.forget), t('admin.forgotten'));
+  if (d.removeKey) guarded(s.id, () => window.api.removeAppKey(s.id), t('admin.keyRemoved'));
   if (d.reconnect) {
-    openDialog(`${dialogHead(`Подключить снова: ${s.name}`)}
-      <input id="reconnect-pass" type="password" placeholder="Пароль root" autocomplete="off" class="wide">
-      <p class="setup-actions"><button class="btn" data-confirm-reconnect="${esc(s.id)}">Подключить</button></p>`);
+    openDialog(`${dialogHead(t('admin.reconnectTitle', { name: s.name }))}
+      <input id="reconnect-pass" type="password" placeholder="${t('setup.rootPass')}" autocomplete="off" class="wide">
+      <p class="setup-actions"><button class="btn" data-confirm-reconnect="${esc(s.id)}">${t('admin.connect')}</button></p>`);
   }
   if (d.confirmReconnect) {
     const password = $('reconnect-pass').value;
-    guarded(d.confirmReconnect, () => window.api.reconnect(d.confirmReconnect, password), 'Доступ восстановлен');
+    guarded(d.confirmReconnect, () => window.api.reconnect(d.confirmReconnect, password), t('admin.restored'));
   }
   if (d.editLimit) {
     const c = s.limit?.config ?? { tb: 3, resetDay: 1, mode: 'both' };
-    const opt = (v, t) => `<option value="${v}" ${c.mode === v ? 'selected' : ''}>${t}</option>`;
-    openDialog(`${dialogHead(`Лимит: ${s.name}`)}
+    const opt = (v, k) => `<option value="${v}" ${c.mode === v ? 'selected' : ''}>${t(k)}</option>`;
+    openDialog(`${dialogHead(t('limit.title', { name: s.name }))}
       <div class="fields">
-        <label>Лимит, ТБ<input id="limit-tb" type="number" min="0.1" step="0.1" value="${esc(c.tb)}"></label>
-        <label>День сброса<input id="limit-day" type="number" min="1" max="31" value="${esc(c.resetDay)}"></label>
-        <label>Что считать<select id="limit-mode">${opt('both', 'Оба направления')}${opt('down', 'Только входящий')}${opt('up', 'Только исходящий')}</select></label>
-        <label>Израсходовано по панели, ТБ<input id="limit-panel" type="number" min="0" step="0.01" placeholder="необязательно"></label>
+        <label>${t('setup.limitTb')}<input id="limit-tb" type="number" min="0.1" step="0.1" value="${esc(c.tb)}"></label>
+        <label>${t('setup.resetDay')}<input id="limit-day" type="number" min="1" max="31" value="${esc(c.resetDay)}"></label>
+        <label>${t('limit.count')}<select id="limit-mode">${opt('both', 'limit.both')}${opt('down', 'limit.down')}${opt('up', 'limit.up')}</select></label>
+        <label>${t('limit.panel')}<input id="limit-panel" type="number" min="0" step="0.01" placeholder="${t('limit.optional')}"></label>
       </div>
-      <p class="note">Сейчас учтено ${s.limit ? formatTb(s.limit.usedBytes) : '—'} с ${s.limit ? esc(s.limit.periodStart) : '—'}${s.limit?.includesBaseline ? ', включая объём до начала учёта' : ''}. Цифра из панели хостера точнее: она поправит учёт до конца этого периода.</p>
-      <p class="setup-actions"><button class="btn" data-save-limit="${esc(s.id)}">Сохранить</button></p>`);
+      <p class="note">${esc(t(s.limit?.includesBaseline ? 'limit.usedBaseline' : 'limit.used', { used: s.limit ? formatTb(s.limit.usedBytes) : '—', since: s.limit ? s.limit.periodStart : '—' }))} ${t('limit.panelNote')}</p>
+      <p class="setup-actions"><button class="btn" data-save-limit="${esc(s.id)}">${t('common.save')}</button></p>`);
   }
   if (d.saveLimit) {
     const panel = $('limit-panel').value.trim();
     const limit = { tb: Number($('limit-tb').value), resetDay: Number($('limit-day').value), mode: $('limit-mode').value, panelTb: panel === '' ? undefined : Number(panel) };
-    guarded(d.saveLimit, () => window.api.setLimit(d.saveLimit, limit), 'Лимит сохранён');
+    guarded(d.saveLimit, () => window.api.setLimit(d.saveLimit, limit), t('limit.saved'));
   }
   if ('sniConfirm' in d) {
     const custom = $('sni-custom').value.trim();
@@ -362,7 +362,7 @@ async function handleServerAdminClick(d) {
   }
   if (d.setupKey) {
     const k = wizard.keys[Number(d.setupKey)];
-    showLinks(`Ключ: ${k.name}`, k.links);
+    showLinks(t('keys.keyTitle', { name: k.name }), k.links);
   }
   if ('setupReset' in d) {
     Object.assign(wizard, { steps: [], error: null, keys: null, sni: null, replaceId: null, subs: null });

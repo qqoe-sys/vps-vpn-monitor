@@ -1,4 +1,5 @@
 'use strict';
+const i18n = require('../../i18n');
 // Выбор источника списка клиентов для нового входа: живой старый вход, иначе снимок из кэша.
 
 const DAY_MS = 24 * 3600 * 1000;
@@ -16,7 +17,7 @@ function pickClients({ live, cache, now = Date.now(), maxAgeDays = 7 }) {
     const stale = !Number.isFinite(age) || age > maxAgeDays * DAY_MS;
     return { inventory: cache.inventory, from: 'cache', savedAt: cache.savedAt, stale };
   }
-  throw new Error('Нет ни связи со старым входом, ни сохранённой копии клиентов');
+  throw new Error(i18n.t('repl.noSource'));
 }
 
 module.exports = { pickClients };

@@ -2,6 +2,7 @@
 // Единственный файл, который знает про библиотеку ssh2.
 // Ключи читаются только здесь и никогда не попадают в интерфейс.
 
+const i18n = require('../i18n');
 const fs = require('node:fs');
 const os = require('node:os');
 const path = require('node:path');
@@ -44,7 +45,7 @@ function connect(server, opts = {}) {
     });
     // on, а не once: вторая сетевая ошибка без обработчика уронила бы всё приложение.
     client.on('error', (err) => {
-      reject(hostKeyRejected ? new Error('Ключ сервера не совпал с доверенным') : err);
+      reject(hostKeyRejected ? new Error(i18n.t('ssh.hostKeyMismatch')) : err);
     });
 
     const auth = {};
@@ -58,7 +59,7 @@ function connect(server, opts = {}) {
         auth.privateKey = fs.readFileSync(expandHome(server.keyPath));
       }
     } catch (err) {
-      reject(new Error(`Не удалось прочитать SSH-файл: ${err.message}`));
+      reject(new Error(i18n.t('ssh.readKey', { err: err.message })));
       return;
     }
 
@@ -98,7 +99,7 @@ function connect(server, opts = {}) {
 // input — данные для стандартного ввода команды (например, новый пароль).
 function exec(client, command, timeoutMs, input) {
   return new Promise((resolve, reject) => {
-    const timer = setTimeout(() => reject(new Error('Сервер не ответил вовремя')), timeoutMs);
+    const timer = setTimeout(() => reject(new Error(i18n.t('ssh.timeout'))), timeoutMs);
     client.exec(command, (err, stream) => {
       if (err) {
         clearTimeout(timer);
