@@ -1,0 +1,5 @@
+{
+  "pollSeconds": 10,
+  "slowEveryPolls": 6,
+  "servers": []
+}

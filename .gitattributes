@@ -1,0 +1,5 @@
+# Скрипты уходят на Linux-серверы по SSH: только LF, иначе bash/python сломаются на \r.
+* text=auto eol=lf
+*.ps1 text eol=crlf
+*.ico binary
+*.png binary

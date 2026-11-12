@@ -1,0 +1,65 @@
+{
+  "name": "vps-vpn-monitor",
+  "productName": "VPS-VPN Monitor",
+  "version": "0.1.0",
+  "description": "Настольное приложение для Windows: настройка и мониторинг VPS с Xray, каскад вход → выход и замена входного сервера без смены выходного IP",
+  "author": "qqoe-sys",
+  "license": "MIT",
+  "homepage": "https://github.com/qqoe-sys/vps-vpn-monitor#readme",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/qqoe-sys/vps-vpn-monitor.git"
+  },
+  "bugs": {
+    "url": "https://github.com/qqoe-sys/vps-vpn-monitor/issues"
+  },
+  "main": "src/main/main.js",
+  "private": true,
+  "scripts": {
+    "start": "electron .",
+    "test": "node --test test/provision.test.js test/core.test.js test/subs.test.js test/replace.test.js",
+    "test:py": "python test/deploy_test.py && python test/exit_link_test.py && python test/cascade_tune_test.py && python test/cascade_safety_test.py",
+    "dist": "electron-builder --win nsis"
+  },
+  "dependencies": {
+    "@xterm/addon-fit": "0.11.0",
+    "@xterm/xterm": "6.0.0",
+    "qrcode": "1.5.4",
+    "ssh2": "1.17.0"
+  },
+  "devDependencies": {
+    "electron": "45.2.3",
+    "electron-builder": "26.18.0"
+  },
+  "build": {
+    "appId": "io.github.vpsvpnmonitor",
+    "productName": "VPS-VPN Monitor",
+    "directories": {
+      "output": "dist"
+    },
+    "files": [
+      "src/**/*",
+      "server/**/*",
+      "assets/**/*",
+      "config/servers.default.json",
+      "package.json",
+      "LICENSE",
+      "THIRD-PARTY-NOTICES.md"
+    ],
+    "npmRebuild": false,
+    "win": {
+      "target": "nsis",
+      "icon": "assets/icon.ico"
+    },
+    "nsis": {
+      "oneClick": false,
+      "perMachine": false,
+      "allowToChangeInstallationDirectory": true,
+      "createDesktopShortcut": true,
+      "createStartMenuShortcut": true,
+      "shortcutName": "VPS-VPN Monitor",
+      "artifactName": "VPS-VPN-Monitor-Setup-${version}.${ext}",
+      "license": "LICENSE"
+    }
+  }
+}

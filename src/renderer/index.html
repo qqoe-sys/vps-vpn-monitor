@@ -1,0 +1,40 @@
+<!doctype html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; style-src 'self' 'unsafe-inline'; script-src 'self'; img-src 'self' data:">
+  <title>VPS-VPN Monitor</title>
+  <link rel="stylesheet" href="../../node_modules/@xterm/xterm/css/xterm.css">
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <nav class="side">
+    <div class="brand">VPS-VPN Monitor</div>
+    <button class="nav active" data-view="overview">Обзор</button>
+    <button class="nav" data-view="keys">Ключи и трафик</button>
+    <button class="nav" data-view="subs">Подписки</button>
+    <button class="nav" data-view="terminal">Терминал</button>
+    <button class="nav" data-view="setup">+ Добавить сервер</button>
+    <div class="side-list" id="side-list"></div>
+  </nav>
+  <main>
+    <section id="overview" class="view"></section>
+    <section id="keys" class="view" hidden></section>
+    <section id="setup" class="view" hidden></section>
+    <section id="subs" class="view" hidden></section>
+    <section id="terminal" class="view term-view" hidden>
+      <div class="term-bar" id="term-bar"></div>
+      <div class="term-host" id="term-host">
+        <p class="empty" id="term-empty">Выбери сервер выше, чтобы открыть терминал.</p>
+      </div>
+    </section>
+  </main>
+  <div class="tip" id="tip" hidden></div>
+  <div class="modal" id="modal" hidden></div>
+  <script src="../../node_modules/@xterm/xterm/lib/xterm.js"></script>
+  <script src="../../node_modules/@xterm/addon-fit/lib/addon-fit.js"></script>
+  <script src="app.js"></script>
+  <script src="setup.js"></script>
+  <script src="subs.js"></script>
+</body>
+</html>
