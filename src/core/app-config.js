@@ -2,6 +2,7 @@
 // Список серверов хранится в данных приложения, чтобы его можно было менять из программы.
 // При первом запуске он создаётся из config/servers.json.
 
+const i18n = require('../i18n');
 const fs = require('node:fs');
 const path = require('node:path');
 const { isIpv4 } = require('./provision/validate');
@@ -23,7 +24,7 @@ function loadServers(file, seedFile) {
 function addServers(config, servers) {
   for (const s of servers) {
     if (config.servers.some((x) => x.id === s.id || x.host === s.host)) {
-      throw new Error(`Сервер ${s.host} уже есть в программе`);
+      throw new Error(i18n.t('cfg.exists', { host: s.host }));
     }
   }
   return { ...config, servers: [...config.servers, ...servers] };
@@ -37,9 +38,9 @@ function removeServer(config, id) {
 // Отказ, если старого нет, это не вход (выход) или он уже заменён — мастер не стартует.
 function markReplaced(config, oldId, newRecord) {
   const old = config.servers.find((s) => s.id === oldId);
-  if (!old) throw new Error('Неизвестный сервер');
-  if (!old.exitHost) throw new Error(`${old.name} не вход каскада: заменить можно только вход`);
-  if (old.replacedBy) throw new Error(`${old.name} уже заменён`);
+  if (!old) throw new Error(i18n.t('main.unknownServer'));
+  if (!old.exitHost) throw new Error(i18n.t('cfg.notEntry', { name: old.name }));
+  if (old.replacedBy) throw new Error(i18n.t('cfg.alreadyReplaced', { name: old.name }));
   const added = addServers(config, [newRecord]); // отказывает, если такой сервер уже есть
   return { ...added, servers: added.servers.map((s) => (s.id === oldId ? { ...s, replacedBy: newRecord.id } : s)) };
 }
@@ -61,8 +62,8 @@ function clearReplacedBy(config, removedId) {
 // Возвращает новый конфиг и id нового входа (по нему main решает, переключать ли подписки обратно).
 function undoReplace(config, oldId) {
   const old = config.servers.find((s) => s.id === oldId);
-  if (!old) throw new Error('Неизвестный сервер');
-  if (!old.replacedBy) throw new Error(`${old.name} не заменён: отменять нечего`);
+  if (!old) throw new Error(i18n.t('main.unknownServer'));
+  if (!old.replacedBy) throw new Error(i18n.t('cfg.notReplaced', { name: old.name }));
   return {
     config: { ...config, servers: config.servers.map((s) => (s.id === oldId ? withoutReplacedBy(s) : s)) },
     newId: old.replacedBy,
@@ -74,13 +75,13 @@ function undoReplace(config, oldId) {
 // subsInUse=false: сайт подписок не настроен (нет домена) — людям ссылки не раздаются,
 // поэтому подписки закрытию доступа не мешают.
 function canCloseExitAccess({ server, subsEntry, subsPending, subsInUse = true }) {
-  if (!server?.replacedBy) return { ok: false, reason: 'Закрыть доступ можно только для заменённого входа' };
+  if (!server?.replacedBy) return { ok: false, reason: i18n.t('cfg.closeOnlyReplaced') };
   if (!subsInUse) return { ok: true };
   if (subsEntry === server.id) {
-    return { ok: false, reason: `Подписки всё ещё ведут на ${server.name}. Сначала переключи их на новый вход во вкладке «Подписки».` };
+    return { ok: false, reason: i18n.t('cfg.subsStillOld', { name: server.name }) };
   }
   if (subsPending) {
-    return { ok: false, reason: 'В подписках есть неопубликованные изменения: сначала опубликуй сайт, чтобы люди получили новый вход.' };
+    return { ok: false, reason: i18n.t('cfg.subsPending') };
   }
   return { ok: true };
 }
@@ -93,8 +94,8 @@ function activeEntryForExit(config, exitHost) {
 // Команда для выхода, которая закрывает доступ старому входу. Адрес и порт попадают в shell,
 // поэтому проверяются строго.
 function exitAccessDeleteCommand(host, port) {
-  if (!isIpv4(host)) throw new Error('Адрес старого входа должен быть IPv4');
-  if (!Number.isInteger(port) || port < 1 || port > 65535) throw new Error('Некорректный порт звена');
+  if (!isIpv4(host)) throw new Error(i18n.t('cfg.oldIpv4'));
+  if (!Number.isInteger(port) || port < 1 || port > 65535) throw new Error(i18n.t('cfg.badLinkPort'));
   return `ufw delete allow from ${host} to any port ${port} proto tcp`;
 }
 

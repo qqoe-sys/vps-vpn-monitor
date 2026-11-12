@@ -15,6 +15,10 @@ const { validName, readKeys, changeKeys, linksFor, FINGERPRINTS } = require('../
 const { restartXray, rebootServer, setPasswordLogin, changeRootPassword, validateNewPassword } = require('../core/server-actions');
 const { ServerMonitor } = require('../core/monitor');
 const { loadStore, saveStore } = require('../core/traffic-store');
+const { loadSettings, saveSettings } = require('../core/settings');
+const i18n = require('../i18n');
+
+const { t } = i18n;
 
 // Папка данных не зависит от названия программы: установленная версия видит те же
 // серверы, историю и ключи, что и запуск из папки проекта.
@@ -26,6 +30,8 @@ const configDir = path.join(__dirname, '../../config');
 const localSeed = path.join(configDir, 'servers.json');
 const seedFile = !app.isPackaged && fs.existsSync(localSeed) ? localSeed : path.join(configDir, 'servers.default.json');
 let config = loadServers(serversFile, seedFile);
+// Язык выбирается до первого сообщения: из settings.json, иначе по языку Windows (см. app ready).
+const settingsFile = path.join(app.getPath('userData'), 'settings.json');
 const SAVE_INTERVAL_MS = 60000;
 // Снимки списка клиентов входов: из них мастер замены берёт клиентов, если старый вход не отвечает.
 const SNAPSHOT_INTERVAL_MS = 10 * 60 * 1000;
@@ -76,7 +82,7 @@ function addMonitor(server) {
   monitors.set(server.id, monitor);
   if (server.noAccess) {
     // Ключ доступа удалён: показываем сервер, но не опрашиваем его.
-    Object.assign(monitor.state, { connection: 'offline', error: 'Ключ доступа удалён' });
+    Object.assign(monitor.state, { connection: 'offline', error: t('main.keyRemoved') });
   } else {
     monitor.start();
   }
@@ -111,7 +117,7 @@ function closeTerminal(id) {
 
 function keyServer(serverId) {
   const server = config.servers.find((s) => s.id === serverId && s.statsPort);
-  if (!server) throw new Error('На этом сервере нет управления ключами');
+  if (!server) throw new Error(t('main.noKeyMgmt'));
   return server;
 }
 
@@ -125,10 +131,10 @@ async function withInventory(server) {
 }
 
 // Подтверждение спрашивает главный процесс: страница не может его обойти.
-async function confirmChange(message, detail, title = 'Изменение Xray') {
+async function confirmChange(message, detail, title = t('main.confirmTitle')) {
   const { response } = await dialog.showMessageBox(win, {
     type: 'warning',
-    buttons: ['Отмена', 'Выполнить'],
+    buttons: [t('main.cancel'), t('main.run')],
     defaultId: 0,
     cancelId: 0,
     title,
@@ -145,7 +151,7 @@ async function withQr(links) {
 // Для каждого сервера одновременно идёт только одно изменение.
 const keyOpsBusy = new Set();
 async function exclusive(serverId, fn) {
-  if (keyOpsBusy.has(serverId)) throw new Error('На этом сервере уже идёт изменение');
+  if (keyOpsBusy.has(serverId)) throw new Error(t('main.busy'));
   keyOpsBusy.add(serverId);
   try {
     return await fn();
@@ -162,7 +168,7 @@ async function saveCountersBeforeRestart(serverId) {
 
 function impactNote(server) {
   const entry = activeEntryForExit(config, server.host);
-  return entry ? `Это выходной сервер: VPN через ${entry.name} тоже перестанет работать на это время.` : 'Клиенты этого сервера потеряют связь на это время.';
+  return entry ? t('main.impactExit', { name: entry.name }) : t('main.impactClients');
 }
 
 // Снимок клиентов каждого действующего входа. Ошибки молча: сервер мог быть недоступен,
@@ -179,13 +185,13 @@ async function snapshotInventories(cacheFile) {
 function registerServerIpc() {
   const find = (serverId) => {
     const server = config.servers.find((s) => s.id === serverId);
-    if (!server) throw new Error('Неизвестный сервер');
+    if (!server) throw new Error(t('main.unknownServer'));
     return server;
   };
 
   ipcMain.handle('server:restart-xray', async (_e, serverId) => {
     const server = find(serverId);
-    if (!(await confirmChange(`Перезапустить Xray на ${server.name}?`, `Обычно это занимает несколько секунд. ${impactNote(server)}`))) return { cancelled: true };
+    if (!(await confirmChange(t('main.restartQ', { name: server.name }), `${t('main.restartDetail')} ${impactNote(server)}`))) return { cancelled: true };
     return exclusive(serverId, async () => {
       quietUntil.set(serverId, Date.now() + XRAY_QUIET_MS);
       await saveCountersBeforeRestart(serverId);
@@ -198,10 +204,10 @@ function registerServerIpc() {
   ipcMain.handle('server:change-password', async (_e, serverId, password) => {
     const server = find(serverId);
     validateNewPassword(password);
-    if (server.noAccess) throw new Error('Сначала подключи сервер снова');
+    if (server.noAccess) throw new Error(t('main.reconnectFirst'));
     const passwordOn = monitors.get(serverId)?.state.passwordAuth === true;
-    const note = passwordOn ? 'Вход новым паролем будет проверен сразу.' : 'Вход по паролю на этом сервере выключен, поэтому новый пароль пока нигде не используется.';
-    if (!(await confirmChange(`Сменить пароль root на ${server.name}?`, `Старый пароль перестанет работать. Приложение пароль не запоминает, сохрани его сам. ${note}`))) return { cancelled: true };
+    const note = t(passwordOn ? 'main.passVerify' : 'main.passUnused');
+    if (!(await confirmChange(t('main.passQ', { name: server.name }), `${t('main.passDetail')} ${note}`))) return { cancelled: true };
     return exclusive(serverId, async () => {
       await changeRootPassword(connect, server, password, { verify: passwordOn });
       return { done: true };
@@ -212,12 +218,10 @@ function registerServerIpc() {
     const server = find(serverId);
     const monitor = monitors.get(serverId);
     const current = monitor?.state.passwordAuth;
-    if (server.noAccess || current === undefined) throw new Error('Состояние входа по паролю пока неизвестно');
+    if (server.noAccess || current === undefined) throw new Error(t('main.passUnknown'));
     const enabling = !current;
-    const detail = enabling
-      ? 'Боты постоянно подбирают пароли, поэтому пароль должен быть длинным и случайным. Вход по ключу останется.'
-      : 'На сервер можно будет зайти только по ключу. Если после изменения вход не пройдёт, настройка вернётся сама через 2 минуты.';
-    if (!(await confirmChange(`${enabling ? 'Включить' : 'Выключить'} вход по паролю на ${server.name}?`, detail))) return { cancelled: true };
+    const detail = t(enabling ? 'main.passOnDetail' : 'main.passOffDetail');
+    if (!(await confirmChange(t(enabling ? 'main.passOnQ' : 'main.passOffQ', { name: server.name }), detail))) return { cancelled: true };
     return exclusive(serverId, async () => {
       await setPasswordLogin(connect, server, enabling);
       monitor.round = 0; // следующий опрос будет полным и покажет новое состояние
@@ -228,7 +232,7 @@ function registerServerIpc() {
 
   ipcMain.handle('server:reboot', async (_e, serverId) => {
     const server = find(serverId);
-    if (!(await confirmChange(`Перезагрузить сервер ${server.name}?`, `Сервер будет недоступен 1–2 минуты. ${impactNote(server)}`))) return { cancelled: true };
+    if (!(await confirmChange(t('main.rebootQ', { name: server.name }), `${t('main.rebootDetail')} ${impactNote(server)}`))) return { cancelled: true };
     return exclusive(serverId, async () => {
       quietUntil.set(serverId, Date.now() + REBOOT_QUIET_MS);
       await saveCountersBeforeRestart(serverId);
@@ -238,7 +242,8 @@ function registerServerIpc() {
   });
 }
 
-const RESTART_NOTE ='Xray перезапустится: подключённые клиенты этого сервера потеряют связь на несколько секунд. Перед изменением будет сделан бэкап конфига.';
+// Функция, а не константа: текст должен быть на текущем языке.
+const restartNote = () => t('main.restartNote');
 
 function registerKeysIpc() {
   ipcMain.handle('keys:list', async (_e, serverId) => {
@@ -248,17 +253,17 @@ function registerKeysIpc() {
 
   ipcMain.handle('keys:links', async (_e, serverId, name, fp) => {
     const server = keyServer(serverId);
-    if (!validName(name)) throw new Error('Недопустимое имя ключа');
+    if (!validName(name)) throw new Error(t('main.badKeyName'));
     const fingerprint = FINGERPRINTS.includes(fp) ? fp : 'firefox';
     return withQr(linksFor(server, await withInventory(server), name, fingerprint));
   });
 
   ipcMain.handle('keys:add', async (_e, serverId, name, profile) => {
     const server = keyServer(serverId);
-    if (!validName(name)) throw new Error('Имя: латиница, цифры, _ и -, до 32 символов, без окончаний -xhttp и -vision');
+    if (!validName(name)) throw new Error(t('main.keyNameRules'));
     // У серверов с двумя режимами ключ создаётся для одного из них.
     const chosen = server.modes?.includes(profile) ? profile : (server.modes?.[0] ?? undefined);
-    if (!(await confirmChange(`Добавить ключ ${name} на ${server.name}?`, RESTART_NOTE))) return { cancelled: true };
+    if (!(await confirmChange(t('main.addKeyQ', { name, server: server.name }), restartNote()))) return { cancelled: true };
     return exclusive(serverId, async () => {
       quietUntil.set(serverId, Date.now() + XRAY_QUIET_MS);
       await saveCountersBeforeRestart(serverId);
@@ -269,8 +274,8 @@ function registerKeysIpc() {
 
   ipcMain.handle('keys:delete', async (_e, serverId, name) => {
     const server = keyServer(serverId);
-    if (!validName(name)) throw new Error('Недопустимое имя ключа');
-    if (!(await confirmChange(`Удалить ключ ${name} с ${server.name}?`, `Клиенты с этим ключом перестанут подключаться. ${RESTART_NOTE}`))) return { cancelled: true };
+    if (!validName(name)) throw new Error(t('main.badKeyName'));
+    if (!(await confirmChange(t('main.delKeyQ', { name, server: server.name }), `${t('main.delKeyDetail')} ${restartNote()}`))) return { cancelled: true };
     return exclusive(serverId, async () => {
       quietUntil.set(serverId, Date.now() + XRAY_QUIET_MS);
       await saveCountersBeforeRestart(serverId);
@@ -284,6 +289,16 @@ function registerIpc() {
   registerKeysIpc();
   registerServerIpc();
   ipcMain.handle('servers:get', () => [...latest.values()]);
+  ipcMain.handle('lang:get', () => i18n.getLang());
+  ipcMain.handle('lang:set', (_e, lang) => {
+    const chosen = i18n.setLang(lang);
+    saveSettings(settingsFile, { ...loadSettings(settingsFile, app.getLocale()), lang: chosen });
+    // Тексты проблем строит главный процесс: пересчитываем их сразу на новом языке.
+    for (const [id, m] of monitors) {
+      if (!config.servers.find((s) => s.id === id)?.noAccess) Promise.resolve(m.pollNow()).catch(() => {});
+    }
+    return chosen;
+  });
 
   ipcMain.handle('traffic:get', (_e, days) => {
     const safeDays = Number.isInteger(days) && days >= 0 ? days : 7;
@@ -300,7 +315,7 @@ function registerIpc() {
 
   ipcMain.handle('term:open', async (_e, serverId, size) => {
     const server = config.servers.find((s) => s.id === serverId);
-    if (!server || !validSize(size)) throw new Error('Некорректный запрос терминала');
+    if (!server || !validSize(size)) throw new Error(t('main.badTerm'));
     const transport = await connect(server);
     let stream;
     try {
@@ -365,6 +380,7 @@ app.on('second-instance', () => {
 
 app.whenReady().then(() => {
   if (!isFirstInstance) return;
+  i18n.setLang(loadSettings(settingsFile, app.getLocale()).lang);
   app.setAppUserModelId('io.github.vpsvpnmonitor'); // нужно для уведомлений Windows
   // Разрешаем только буфер обмена: без него не работает вставка в терминал.
   const allowed = new Set(['clipboard-read', 'clipboard-sanitized-write']);

@@ -41,7 +41,7 @@ class DeployTest(unittest.TestCase):
         r = subprocess.run([sys.executable, SCRIPT], input=payload, capture_output=True, text=True, env=env)
         reply = json.loads(r.stdout.strip().splitlines()[-1])
         self.assertFalse(reply['ok'])
-        self.assertIn('Установить сайт', reply['error'])
+        self.assertIn('@E:caddy_missing', reply['error'])
         self.assertFalse(os.path.exists(base))
 
 

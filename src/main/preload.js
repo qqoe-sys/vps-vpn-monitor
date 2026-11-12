@@ -48,4 +48,7 @@ contextBridge.exposeInMainWorld('api', {
   subsPublish: () => ipcRenderer.invoke('subs:publish'),
   subsInstall: () => ipcRenderer.invoke('subs:install'),
   subsQr: (url) => ipcRenderer.invoke('subs:qr', url),
+  // Язык программы: читается при запуске, меняется переключателем в меню.
+  getLang: () => ipcRenderer.invoke('lang:get'),
+  setLang: (lang) => ipcRenderer.invoke('lang:set', lang),
 });

@@ -21,14 +21,14 @@ def config_path():
     for p in ([m.group(1)] if m else []) + ['/etc/xray/config.json', '/usr/local/etc/xray/config.json']:
         if os.path.exists(p):
             return p
-    raise RuntimeError('Не найден конфиг Xray')
+    raise RuntimeError('@E:xray_config_missing')
 
 
 def public_key(private):
     out = run('xray', 'x25519', '-i', private).stdout
     m = re.search(r'^(?:Public key|Password(?: \(PublicKey\))?):\s*(\S+)', out, re.M | re.I)
     if not m:
-        raise RuntimeError('Не удалось получить публичный ключ Reality')
+        raise RuntimeError('@E:reality_pubkey')
     return m.group(1)
 
 
@@ -44,16 +44,16 @@ def link_params(cfg):
         for c in (ib.get('settings') or {}).get('clients', []):
             pairs.append((ib, c))
     if not has_reality:
-        raise ValueError('На выходе нет входящего VLESS+Reality')
+        raise ValueError('@E:exit_no_reality')
     if len(pairs) != 1:
-        raise ValueError('На выходе нет клиентов' if not pairs else 'Найдено несколько клиентов звена, укажи вручную')
+        raise ValueError('@E:exit_no_clients' if not pairs else '@E:exit_many_clients')
     ib, client = pairs[0]
     ss = ib['streamSettings']
     rs = ss['realitySettings']
     short_ids = [s for s in rs.get('shortIds', []) if s]
     names = rs.get('serverNames') or []
     if not short_ids or not names:
-        raise ValueError('В Reality выхода нет shortId или serverNames')
+        raise ValueError('@E:exit_reality_incomplete')
     return {
         'port': ib['port'],
         'uuid': client['id'],

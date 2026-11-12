@@ -1,4 +1,5 @@
 'use strict';
+const i18n = require('../i18n');
 // Собирает shell-скрипт, который приложение запускает на сервере при каждом опросе.
 // Скрипт только ЧИТАЕТ состояние. Каждая секция начинается с маркера "@@имя",
 // чтобы парсер мог разрезать общий вывод на части.
@@ -10,13 +11,13 @@ function buildScript(server, { slow = false } = {}) {
   // Значения из конфига попадают в команду, поэтому сначала проверяем их формат:
   // так случайный символ в конфиге не превратится в чужую команду на сервере.
   for (const s of server.services) {
-    if (!SERVICE_RE.test(s)) throw new Error(`Некорректное имя службы: ${s}`);
+    if (!SERVICE_RE.test(s)) throw new Error(i18n.t('val.badService', { name: s }));
   }
   if (server.exitHost && !HOST_RE.test(server.exitHost)) {
-    throw new Error(`Некорректный exitHost: ${server.exitHost}`);
+    throw new Error(i18n.t('val.badExitHost', { host: server.exitHost }));
   }
   if (server.statsPort !== null && !Number.isInteger(server.statsPort)) {
-    throw new Error(`Некорректный statsPort: ${server.statsPort}`);
+    throw new Error(i18n.t('val.badStatsPort', { port: server.statsPort }));
   }
 
   const lines = [

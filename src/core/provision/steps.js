@@ -2,6 +2,7 @@
 // Шаги настройки сервера. SSH приходит снаружи (ctx.connect), поэтому всё проверяется подделкой.
 // План: { targets: [{ id, name, host, password, role: 'single'|'entry'|'exit', modes, ports, limit, sni? }] }
 
+const i18n = require('../../i18n');
 const fs = require('node:fs');
 const path = require('node:path');
 const { buildEntryConfig, buildExitConfig } = require('./xray-config');
@@ -21,9 +22,9 @@ const APT = 'DEBIAN_FRONTEND=noninteractive apt-get -o DPkg::Lock::Timeout=180';
 async function runOn(transport, command, timeoutMs) {
   const output = await transport.exec(`${command} 2>&1; echo "@@rc=$?"`, timeoutMs);
   const m = output.match(/@@rc=(\d+)\s*$/);
-  if (!m) throw new Error('Связь с сервером оборвалась во время шага');
+  if (!m) throw new Error(i18n.t('prov.connLost'));
   const text = output.slice(0, m.index).trim();
-  if (m[1] !== '0') throw new Error(text.slice(-400) || `Команда завершилась с кодом ${m[1]}`);
+  if (m[1] !== '0') throw new Error(text.slice(-400) || i18n.t('prov.exitCode', { code: m[1] }));
   return text;
 }
 
@@ -44,16 +45,16 @@ function parsePrecheck(text, ports, { ignoreIncomplete = false } = {}) {
     return [l.slice(0, i).trim(), l.slice(i + 1).trim()];
   }));
   const problems = [];
-  if (!SUPPORTED[v.os]?.includes(v.ver)) problems.push(`ОС ${v.os} ${v.ver} не поддерживается`);
-  if (!['x86_64', 'aarch64'].includes(v.arch)) problems.push(`Неподдерживаемая архитектура: ${v.arch}`);
+  if (!SUPPORTED[v.os]?.includes(v.ver)) problems.push(i18n.t('prov.osUnsupported', { os: v.os, ver: v.ver }));
+  if (!['x86_64', 'aarch64'].includes(v.arch)) problems.push(i18n.t('prov.archUnsupported', { arch: v.arch }));
   // Xray и занятые порты от незавершённой установки — наши собственные следы, а не конфликт.
   const incomplete = v.manifest === 'incomplete';
-  if (v.xray === 'yes' && !incomplete) problems.push('На сервере уже есть Xray: настройка поверх него отключена');
-  if (v.busy && !incomplete) problems.push(`Порты уже заняты: ${v.busy}`);
-  if (v.ss === 'no') problems.push('На сервере нет утилиты ss (пакет iproute2): нельзя проверить порты');
-  if (Number(v.disk_mb) < MIN_DISK_MB) problems.push('Мало места на диске');
-  if (incomplete && !ignoreIncomplete) problems.push('Прошлая установка не завершена');
-  if (v.manifest === 'complete') problems.push('Сервер уже настроен этой программой');
+  if (v.xray === 'yes' && !incomplete) problems.push(i18n.t('prov.xrayExists'));
+  if (v.busy && !incomplete) problems.push(i18n.t('prov.portsBusy', { ports: v.busy }));
+  if (v.ss === 'no') problems.push(i18n.t('prov.noSs'));
+  if (Number(v.disk_mb) < MIN_DISK_MB) problems.push(i18n.t('prov.lowDisk'));
+  if (incomplete && !ignoreIncomplete) problems.push(i18n.t('prov.incomplete'));
+  if (v.manifest === 'complete') problems.push(i18n.t('prov.alreadyManaged'));
   return { ...v, problems };
 }
 
@@ -105,7 +106,7 @@ function configFor(t, plan, ctx) {
 
 function serverRecord(t, plan) {
   const exit = exitOf(plan);
-  const ROLE = { single: 'Одиночный VPN', exit: 'Выход', entry: `Вход → ${exit?.name}` };
+  const ROLE = { single: i18n.t('role.single'), exit: i18n.t('role.exit'), entry: i18n.t('role.entry', { exit: exit?.name }) };
   const isExit = t.role === 'exit';
   return {
     id: t.id,
@@ -163,14 +164,14 @@ const eachOf = (targets) => (fn) => async (ctx) => {
 
 const stepConnect = (targets) => ({
   id: 'connect',
-  title: 'Подключение по паролю',
+  title: i18n.t('step.connect'),
   run: eachOf(targets)(async (t, ctx) => { t.transport = await ctx.connect(t, { password: t.password }); }),
 });
 
 function stepPrecheck(targets, { cleanIncomplete = false } = {}) {
   return {
     id: 'precheck',
-    title: 'Проверка сервера',
+    title: i18n.t('step.precheck'),
     run: async () => {
       // Сначала проверяем все серверы, чтобы при конфликте ни один не был изменён.
       const check = async (ignoreIncomplete) => {
@@ -194,7 +195,7 @@ function stepPrecheck(targets, { cleanIncomplete = false } = {}) {
 
 const stepAppKey = (targets) => ({
   id: 'app-key',
-  title: 'Ключ доступа приложения',
+  title: i18n.t('step.appKey'),
   undoOnFail: true,
   run: eachOf(targets)(async (t, ctx) => {
     const key = ctx.makeKey();
@@ -233,7 +234,7 @@ chmod 600 /root/.ssh/authorized_keys
 
 const stepFail2ban = (targets) => ({
   id: 'fail2ban',
-  title: 'Защита от подбора пароля',
+  title: i18n.t('step.fail2ban'),
   run: eachOf(targets)((t) => sh(t, `# step:fail2ban
 set -e
 ${APT} update
@@ -244,30 +245,30 @@ enabled = true
 maxretry = 5
 bantime = 1h
 JAIL
-systemctl enable --now fail2ban || echo 'fail2ban не запустился, установка продолжается'
-systemctl restart fail2ban || echo 'fail2ban не перезапустился'
+systemctl enable --now fail2ban || echo '@E:f2b_start'
+systemctl restart fail2ban || echo '@E:f2b_restart'
 `, 300000)),
 });
 
 const stepXray = (targets) => ({
   id: 'xray',
-  title: 'Установка Xray',
+  title: i18n.t('step.xray'),
   run: eachOf(targets)((t) => sh(t, readServerFile('install-xray.sh'), 300000)),
 });
 
 const stepSni = (targets) => ({
   id: 'sni',
-  title: 'Подбор SNI',
+  title: i18n.t('step.sni'),
   run: eachOf(targets)(async (t, ctx) => {
     if (t.sni) return;
     const request = b64(JSON.stringify({ candidates: DEFAULT_SNI_CANDIDATES, subnetScan: true }));
     const out = await py(t, readServerFile('sni-probe.py'), [request], 180000);
     const picked = await ctx.chooseSni(t, rankSni(JSON.parse(out)));
-    if (!picked) throw new Error('SNI не выбран');
+    if (!picked) throw new Error(i18n.t('prov.sniNotPicked'));
     // Домен могли ввести вручную, поэтому проверяем его теми же критериями.
     const recheck = b64(JSON.stringify({ candidates: [picked], subnetScan: false }));
     if (!rankSni(JSON.parse(await py(t, readServerFile('sni-probe.py'), [recheck], 60000))).length) {
-      throw new Error(`Домен ${picked} не подходит для маскировки`);
+      throw new Error(i18n.t('prov.sniBad', { domain: picked }));
     }
     t.sni = picked;
   }),
@@ -276,14 +277,14 @@ const stepSni = (targets) => ({
 // configOf(t, ctx) возвращает объект конфига Xray; ключи Reality к этому моменту уже в t.xrayKeys.
 const stepConfig = (targets, configOf) => ({
   id: 'config',
-  title: 'Настройка Xray',
+  title: i18n.t('step.config'),
   run: eachOf(targets)(async (t, ctx) => {
     const keys = await sh(t, '# step:keygen\n/usr/local/bin/xray x25519');
     t.xrayKeys = {
       privateKey: keys.match(/^Private ?key:\s*(\S+)/im)?.[1],
       publicKey: keys.match(/^(?:Public key|Password(?: \(PublicKey\))?):\s*(\S+)/im)?.[1],
     };
-    if (!t.xrayKeys.privateKey || !t.xrayKeys.publicKey) throw new Error('Не удалось создать ключи Xray');
+    if (!t.xrayKeys.privateKey || !t.xrayKeys.publicKey) throw new Error(i18n.t('prov.xrayKeys'));
     const config = JSON.stringify(configOf(t, ctx), null, 2);
     // Владелец root:xray, права 640, и xray run -test до того, как конфиг станет рабочим.
     await sh(t, `# step:config
@@ -302,7 +303,7 @@ systemctl restart xray
 
 const stepSysctl = (targets) => ({
   id: 'sysctl',
-  title: 'Ускорение сети (BBR)',
+  title: i18n.t('step.bbr'),
   run: eachOf(targets)((t) => sh(t, `# step:sysctl
 set -e
 python3 ${MANIFEST} add files /etc/sysctl.d/99-vpsmon.conf
@@ -313,7 +314,7 @@ sysctl -p /etc/sysctl.d/99-vpsmon.conf || true
 
 const stepFirewall = (targets, plan) => ({
   id: 'firewall',
-  title: 'Закрытие файрвола',
+  title: i18n.t('step.firewall'),
   run: eachOf(targets)(async (t, ctx) => {
     await sh(t, firewallScript(t, plan));
     // Новый вход доказывает, что файрвол нас не отрезал. Только потом снимаем защитный таймер.
@@ -326,7 +327,7 @@ const stepFirewall = (targets, plan) => ({
 // recordOf(t) — запись сервера для приложения: из неё сборщик берёт порт статистики.
 const stepCollector = (targets, recordOf) => ({
   id: 'collector',
-  title: 'Учёт трафика',
+  title: i18n.t('step.collector'),
   run: eachOf(targets)((t) => sh(t, `python3 ${MANIFEST} add files /etc/systemd/system/vpsmon-collector.service /etc/systemd/system/vpsmon-collector.timer
 python3 ${MANIFEST} add units vpsmon-collector.timer vpsmon-collector.service
 ${collectorInstallScript(recordOf(t), null)}`)),
@@ -334,7 +335,7 @@ ${collectorInstallScript(recordOf(t), null)}`)),
 
 // Проверка «Xray здоров» (логика xray_stable из server/cascade-tune.py): 5 опросов подряд раз в секунду
 // ActiveState=active, а NRestarts не растёт. Одиночный «active» в цикле падений здоровьем не считается.
-const XRAY_STABLE_PY = `# Xray здоров: need опросов подряд active и счётчик перезапусков не растёт.
+const XRAY_STABLE_PY = `# Xray is healthy: active for "need" polls in a row and the restart counter does not grow.
 import subprocess
 import sys
 import time
@@ -368,16 +369,16 @@ if __name__ == '__main__':
 // exitFor(t, ctx) → { host, port } выхода, который вход должен видеть по TCP, или null (не проверять).
 const stepVerify = (targets, exitFor = () => null) => ({
   id: 'verify',
-  title: 'Итоговая проверка',
+  title: i18n.t('step.verify'),
   run: eachOf(targets)((t, ctx) => {
     const exit = exitFor(t, ctx);
     return sh(t, `# step:verify
 set -e
-echo ${b64(XRAY_STABLE_PY)} | base64 -d | python3 - || { echo 'Xray не держится запущенным: служба перезапускается или не стартует'; exit 1; }
+echo ${b64(XRAY_STABLE_PY)} | base64 -d | python3 - || { echo '@E:xray_unstable'; exit 1; }
 for p in ${portsOf(t).join(' ')}; do
-  ss -tlnH | awk '{print $4}' | grep -qE ":$p$" || { echo "Порт $p не слушается"; exit 1; }
+  ss -tlnH | awk '{print $4}' | grep -qE ":$p$" || { echo "@E:port_not_listening|$p"; exit 1; }
 done
-${exit ? `timeout 6 bash -c '</dev/tcp/${exit.host}/${exit.port}' || { echo 'Вход не видит выходной сервер'; exit 1; }` : ''}
+${exit ? `timeout 6 bash -c '</dev/tcp/${exit.host}/${exit.port}' || { echo '@E:entry_no_exit'; exit 1; }` : ''}
 `);
   }),
 });
@@ -404,7 +405,7 @@ function buildSteps(plan) {
     }),
     {
       id: 'finish',
-      title: 'Завершение',
+      title: i18n.t('step.finish'),
       run: async (ctx) => {
         for (const t of targets) await sh(t, `python3 ${MANIFEST} status complete`);
         ctx.result = { servers: plan.targets.map((t) => serverRecord(t, plan)) };

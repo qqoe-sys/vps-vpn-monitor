@@ -4,7 +4,7 @@ set -e
 case "$(uname -m)" in
   x86_64) ZIP=Xray-linux-64.zip ;;
   aarch64) ZIP=Xray-linux-arm64-v8a.zip ;;
-  *) echo "Неподдерживаемая архитектура"; exit 1 ;;
+  *) echo "@E:arch_unsupported"; exit 1 ;;
 esac
 M=/usr/local/lib/vpsmon/manifest.py
 python3 $M add files /usr/local/bin/xray /usr/local/share/xray /usr/local/etc/xray /etc/systemd/system/xray.service
@@ -14,11 +14,11 @@ python3 $M add users xray
 WORK=$(mktemp -d)
 trap 'rm -rf "$WORK"' EXIT
 BASE=https://github.com/XTLS/Xray-core/releases/latest/download
-curl -fsSL --retry 1 --max-time 120 -o "$WORK/x.zip" "$BASE/$ZIP" || { echo "Не удалось скачать Xray с GitHub"; exit 1; }
-curl -fsSL --retry 1 --max-time 20 -o "$WORK/x.dgst" "$BASE/$ZIP.dgst" || { echo "Не удалось скачать контрольную сумму Xray"; exit 1; }
+curl -fsSL --retry 1 --max-time 120 -o "$WORK/x.zip" "$BASE/$ZIP" || { echo "@E:xray_download"; exit 1; }
+curl -fsSL --retry 1 --max-time 20 -o "$WORK/x.dgst" "$BASE/$ZIP.dgst" || { echo "@E:xray_digest_download"; exit 1; }
 WANT=$(awk -F'= *' 'tolower($1) ~ /sha2-256|sha256/ {print $2; exit}' "$WORK/x.dgst")
 GOT=$(sha256sum "$WORK/x.zip" | awk '{print $1}')
-if [ -z "$WANT" ] || [ "$WANT" != "$GOT" ]; then echo "Контрольная сумма Xray не сошлась"; exit 1; fi
+if [ -z "$WANT" ] || [ "$WANT" != "$GOT" ]; then echo "@E:xray_digest_mismatch"; exit 1; fi
 
 unzip -q -o "$WORK/x.zip" -d "$WORK/x"
 install -m 755 "$WORK/x/xray" /usr/local/bin/xray

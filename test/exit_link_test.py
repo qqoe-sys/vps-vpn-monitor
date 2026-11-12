@@ -39,7 +39,7 @@ class LinkParams(unittest.TestCase):
     def test_two_clients(self):
         cfg = exit_cfg()
         cfg['inbounds'][1]['settings']['clients'].append({'id': 'X', 'email': 'x'})
-        with self.assertRaisesRegex(ValueError, 'несколько клиентов'):
+        with self.assertRaisesRegex(ValueError, '@E:exit_many_clients'):
             exitlink.link_params(cfg)
 
     def test_no_reality(self):

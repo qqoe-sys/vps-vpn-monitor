@@ -9,6 +9,7 @@
 // `ufw allow from <IP нового входа> to any port <порт звена> proto tcp` под защитным таймером
 // и снять таймер / удалить это же правило при откате. Xray выхода не трогаем вообще.
 
+const i18n = require('../../i18n');
 const fs = require('node:fs');
 const path = require('node:path');
 const P = require('../provision/steps');
@@ -24,10 +25,10 @@ const guardUnit = (ip, port) => `vpsmon-exit-guard-${ip.replace(/\./g, '-')}-${p
 
 // Адреса и ключ проверяем ДО первого шага: они попадают в команды shell и в сравнение IP в probe.
 function checkPlan(plan) {
-  if (!isIpv4(plan?.target?.host)) throw new Error('Адрес нового сервера должен быть IPv4');
-  if (!isIpv4(plan?.exit?.host)) throw new Error('Адрес выхода должен быть IPv4');
-  if (!plan.exit.keyPath) throw new Error('У выхода нет ключа доступа приложения');
-  if (!usedInbounds(plan.source.inventory).length) throw new Error('В списке старого входа нет ни одного клиента: переносить нечего');
+  if (!isIpv4(plan?.target?.host)) throw new Error(i18n.t('repl.newIpv4'));
+  if (!isIpv4(plan?.exit?.host)) throw new Error(i18n.t('repl.exitIpv4'));
+  if (!plan.exit.keyPath) throw new Error(i18n.t('repl.exitNoKey'));
+  if (!usedInbounds(plan.source.inventory).length) throw new Error(i18n.t('repl.noClients'));
 }
 
 // План замены из того, что собрал main: форма, записи старого входа и выхода, выбранный источник клиентов.
@@ -55,7 +56,7 @@ function lastJson(text, what) {
   try {
     return JSON.parse(line);
   } catch {
-    throw new Error(`${what}: непонятный ответ сервера`);
+    throw new Error(i18n.t('repl.badReply', { what }));
   }
 }
 
@@ -85,7 +86,7 @@ function buildReplaceSteps(plan) {
   const record = () => ({
     id: t.id,
     name: t.name,
-    role: `Вход → ${exit.name}`,
+    role: i18n.t('role.entry', { exit: exit.name }),
     host: t.host,
     user: 'root',
     keyPath: t.keyPath,
@@ -111,7 +112,7 @@ function buildReplaceSteps(plan) {
     P.stepPrecheck(targets, { cleanIncomplete: plan.cleanIncomplete }),
     {
       id: 'exit-link',
-      title: 'Параметры звена с выхода',
+      title: i18n.t('step.exitLink'),
       undoOnFail: true,
       run: async (ctx) => {
         const x = await onExit(ctx);
@@ -122,19 +123,19 @@ function buildReplaceSteps(plan) {
         } catch (err) {
           // Скрипт при ошибке печатает {ok:false,error}; показываем только текст ошибки.
           const e = (() => { try { return JSON.parse(err.message.trim().split('\n').pop()); } catch { return null; } })();
-          throw new Error(`Выход: ${e?.error || err.message}`);
+          throw new Error(`${i18n.t('role.exit')}: ${e?.error || err.message}`);
         }
-        const link = lastJson(out, 'Выход');
-        if (!link.ok) throw new Error(`Выход: ${link.error || 'не удалось прочитать звено'}`);
+        const link = lastJson(out, i18n.t('role.exit'));
+        if (!link.ok) throw new Error(`${i18n.t('role.exit')}: ${link.error || i18n.t('repl.linkRead')}`);
         addSecrets(ctx, link.uuid);
         const missing = ['uuid', 'publicKey', 'shortId', 'sni'].filter((k) => typeof link[k] !== 'string' || !link[k]);
         if (!Number.isInteger(link.port) || typeof link.flow !== 'string' || missing.length) {
-          throw new Error(`Выход: неполные параметры звена (${missing.join(', ') || 'port/flow'})`);
+          throw new Error(`${i18n.t('role.exit')}: ${i18n.t('repl.linkIncomplete', { fields: missing.join(', ') || 'port/flow' })}`);
         }
         // Звено новый вход строит по TCP (Vision работает только поверх TCP). Пустой network = tcp,
         // raw — новое имя tcp в Xray. Другой транспорт — отказ, пока на выходе ничего не изменено.
         const net = link.network || 'tcp';
-        if (net !== 'tcp' && net !== 'raw') throw new Error(`Выход: звено работает по ${net}, а нужно по TCP`);
+        if (net !== 'tcp' && net !== 'raw') throw new Error(`${i18n.t('role.exit')}: ${i18n.t('repl.linkNotTcp', { net })}`);
         ctx.link = link;
       },
       undo: async () => closeQuietly(exit),
@@ -162,7 +163,7 @@ function buildReplaceSteps(plan) {
     P.stepVerify(targets),
     {
       id: 'exit-allow',
-      title: 'Доступ на выходе',
+      title: i18n.t('step.exitAccess'),
       undoOnFail: true,
       run: async (ctx) => {
         const x = await onExit(ctx);
@@ -216,20 +217,20 @@ systemctl reset-failed ${g}.service ${g}.timer 2>/dev/null || true
     },
     {
       id: 'probe',
-      title: 'Проверка пути через выход',
+      title: i18n.t('step.probe'),
       run: async (ctx) => {
         const request = P.b64(JSON.stringify({ action: 'probe', role: 'entry', exitIp: exit.host }));
         const out = await P.py(t, `# step:probe\n${readScript('cascade-tune.py')}`, [request], 180000);
-        const res = lastJson(out, 'Проверка пути');
+        const res = lastJson(out, i18n.t('step.probe'));
         if (res.ok) return;
         // Только тег inbound и SNI: ни UUID, ни ключей в сообщении нет.
         const failed = (res.probes || []).filter((p) => !p.ok).map((p) => `${p.inbound}/${p.sni} (http ${p.http || '-'})`);
-        throw new Error(`Путь через выход не работает: ${failed.join(', ') || res.error || 'нет проверок'}`);
+        throw new Error(i18n.t('repl.probeFailed', { list: failed.join(', ') || res.error || i18n.t('repl.noChecks') }));
       },
     },
     {
       id: 'finish',
-      title: 'Завершение',
+      title: i18n.t('step.finish'),
       run: async (ctx) => {
         if (ctx.exitRuleAdded) {
           // Снимаем таймер выхода и убеждаемся, что правило на месте (таймер мог успеть сработать).
@@ -239,8 +240,8 @@ systemctl reset-failed ${g}.service ${g}.timer 2>/dev/null || true
           await P.sh(x, `# step:exit-release
 systemctl stop ${g}.timer 2>/dev/null || true
 systemctl reset-failed ${g}.service ${g}.timer 2>/dev/null || true
-! systemctl is-active --quiet ${g}.timer || { echo 'Не удалось снять защитный таймер на выходе'; exit 1; }
-ufw show added | grep -qxF 'ufw ${r}' || { echo 'Правило на выходе пропало (защитный таймер успел сработать)'; exit 1; }
+! systemctl is-active --quiet ${g}.timer || { echo '@E:guard_stop_failed'; exit 1; }
+ufw show added | grep -qxF 'ufw ${r}' || { echo '@E:exit_rule_gone'; exit 1; }
 `);
         }
         await P.sh(t, `python3 ${P.MANIFEST} status complete`);

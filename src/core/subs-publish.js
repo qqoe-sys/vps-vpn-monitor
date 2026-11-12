@@ -1,6 +1,7 @@
 'use strict';
 // Публикация сайта подписок на сервер, установка Caddy, проверка DNS и кэш ключей входа.
 
+const i18n = require('../i18n');
 const dns = require('node:dns');
 const fs = require('node:fs');
 const { validPort, RESERVED_PORTS } = require('./subs-config');
@@ -26,10 +27,10 @@ function parseReply(text) {
   try {
     reply = JSON.parse(line);
   } catch {
-    throw new Error('Сервер вернул непонятный ответ');
+    throw new Error(i18n.t('srvmsg.badReply'));
   }
   // Коды ссылок (43 символа) вырезаем: путь к файлу в ошибке ОС раскрыл бы чужую ссылку.
-  if (!reply.ok) throw new Error(String(reply.error || 'Сервер сообщил об ошибке').replace(/[A-Za-z0-9_-]{43}/g, '…'));
+  if (!reply.ok) throw new Error(String(reply.error || i18n.t('srvmsg.error')).replace(/[A-Za-z0-9_-]{43}/g, '…'));
   return reply;
 }
 
@@ -40,7 +41,7 @@ async function publish(transport, built) {
 
 function installCommand(port) {
   if (!validPort(port)) {
-    throw new Error(`Порт сайта: число от 1 до 65535, кроме ${RESERVED_PORTS.join(', ')}`);
+    throw new Error(i18n.t('subs.badPort', { ports: RESERVED_PORTS.join(', ') }));
   }
   return `umask 077; echo ${b64(INSTALL)} | base64 -d > /run/vpsmon-install.sh && bash /run/vpsmon-install.sh ${port}`;
 }
@@ -55,7 +56,7 @@ async function checkDns(domain, host, lookup = dns.promises.lookup) {
   const addrs = await lookup(domain, { all: true, family: 4 });
   const ips = addrs.map((a) => a.address);
   if (!ips.includes(host)) {
-    throw new Error(`Домен ${domain} указывает на ${ips.join(', ') || 'ничего'}, а не на ${host}. Поправь A-запись у регистратора.`);
+    throw new Error(i18n.t('subs.dnsMismatch', { domain, ips: ips.join(', ') || i18n.t('subs.nothing'), host }));
   }
 }
 
@@ -84,7 +85,7 @@ async function readInventory({ read, cacheFile, entryId, now = Date.now() }) {
     return { inventory, cachedAt: null };
   } catch {
     const cached = loadInventoryCache(cacheFile, entryId);
-    if (!cached) throw new Error('Вход не отвечает, а сохранённых ключей нет');
+    if (!cached) throw new Error(i18n.t('subs.noCache'));
     return { inventory: cached.inventory, cachedAt: cached.savedAt };
   }
 }

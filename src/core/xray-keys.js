@@ -1,6 +1,7 @@
 'use strict';
 // Управление ключами Xray: отправка xray-keys.py на сервер и сборка vless-ссылок.
 
+const i18n = require('../i18n');
 const crypto = require('node:crypto');
 const fs = require('node:fs');
 const path = require('node:path');
@@ -38,7 +39,7 @@ function parseResult(text) {
   try {
     result = JSON.parse(text.trim());
   } catch {
-    throw new Error('Сервер вернул непонятный ответ');
+    throw new Error(i18n.t('srvmsg.badReply'));
   }
   if (!result.ok) throw new Error(result.error);
   return result.data;
@@ -71,7 +72,7 @@ async function changeKeys(connect, server, request) {
   } finally {
     try { transport?.close(); } catch { /* уже закрыт */ }
   }
-  throw new Error('Сервер не сообщил результат. Проверь список ключей: изменение могло примениться');
+  throw new Error(i18n.t('srvmsg.noResultKeys'));
 }
 
 function linksFor(server, inv, name, fp = 'firefox') {

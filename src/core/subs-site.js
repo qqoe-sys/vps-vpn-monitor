@@ -7,6 +7,7 @@
 //   s/<код>/index.html    — страница человека (для браузера)
 //   s/<код>/sub           — подписка: base64 от одной XHTTP-ссылки (для Happ)
 
+const i18n = require('../i18n');
 const QRCode = require('qrcode');
 const { TOKEN_RE } = require('./subs-config');
 const { linksFor } = require('./xray-keys');
@@ -87,54 +88,59 @@ ol{padding-left:20px;margin:8px 0}.tabs{display:flex;gap:6px;flex-wrap:wrap}
 
 const OS_LABELS = { android: 'Android', ios: 'iOS', windows: 'Windows', linux: 'Linux' };
 
-function head(title) {
-  return `<!doctype html><html lang="ru"><head><meta charset="utf-8">
+// Язык сайта задаётся в настройках подписок (site.lang) и не зависит от языка программы.
+const siteLang = (subs) => subs.site.lang ?? 'ru';
+
+function head(title, lang) {
+  return `<!doctype html><html lang="${esc(lang)}"><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1"><meta name="robots" content="noindex,nofollow">
 <meta name="referrer" content="no-referrer"><title>${esc(title)}</title><style>${CSS}</style></head>`;
 }
 
-function appsBlock(apps) {
+function appsBlock(apps, lang) {
   const radios = Object.keys(OS_LABELS).map((os, i) => `<input type="radio" name="os" id="os-${os}"${i === 0 ? ' checked' : ''}>`).join('');
   const tabs = Object.entries(OS_LABELS).map(([os, label]) => `<label for="os-${os}">${label}</label>`).join('');
   const panels = Object.keys(OS_LABELS).map((os) => {
     const app = apps[os];
     const steps = app.steps.map((s) => `<li>${esc(s)}</li>`).join('');
-    return `<div class="os" id="p-${os}"><ol>${steps}</ol><a class="btn ghost" href="${esc(app.url)}" target="_blank" rel="noopener noreferrer">Скачать ${esc(app.name)}</a></div>`;
+    return `<div class="os" id="p-${os}"><ol>${steps}</ol><a class="btn ghost" href="${esc(app.url)}" target="_blank" rel="noopener noreferrer">${esc(i18n.tr(lang, 'site.download', { app: app.name }))}</a></div>`;
   }).join('');
-  return `<div class="card"><b>Как подключиться</b>${radios}<div class="tabs">${tabs}</div>${panels}</div>`;
+  return `<div class="card"><b>${esc(i18n.tr(lang, 'site.how'))}</b>${radios}<div class="tabs">${tabs}</div>${panels}</div>`;
 }
 
 function renderPage({ subs, person, link, url, qrSub, qrKey }) {
   const { title } = subs.site;
+  const lang = siteLang(subs);
+  const tx = (key) => esc(i18n.tr(lang, key));
   const intro = `<h1>${esc(title)}</h1><div class="muted">${esc(person.name)}</div>`;
   if (!link) {
-    return `${head(title)}<body><main>${intro}<div class="card empty">Ключей нет</div></main></body></html>`;
+    return `${head(title, lang)}<body><main>${intro}<div class="card empty">${tx('site.noKeys')}</div></main></body></html>`;
   }
-  const copy = (id) => `<button class="btn ghost" type="button" data-copy="${id}">Скопировать</button>`;
+  const copy = (id) => `<button class="btn ghost" type="button" data-copy="${id}">${tx('site.copy')}</button>`;
   // Диплинк Happ: открывает приложение и сразу добавляет подписку.
   const deeplink = `happ://add/${url}`;
-  return `${head(title)}<body><main>${intro}
+  return `${head(title, lang)}<body><main>${intro}
 <div class="card"><div class="qr">${qrSub}</div>
-<a class="btn primary" href="${esc(deeplink)}">Добавить в Happ</a>
+<a class="btn primary" href="${esc(deeplink)}">${tx('site.addHapp')}</a>
 <code id="sub-url">${esc(url)}</code>${copy('sub-url')}</div>
-${appsBlock(subs.apps)}
-<div class="card"><b>Не подключается? Обнови подписку в Happ</b>
-<details><summary>Ключ вручную</summary><div class="qr">${qrKey}</div><code id="key">${esc(link)}</code>${copy('key')}</details></div>
+${appsBlock(subs.apps, lang)}
+<div class="card"><b>${tx('site.trouble')}</b>
+<details><summary>${tx('site.manualKey')}</summary><div class="qr">${qrKey}</div><code id="key">${esc(link)}</code>${copy('key')}</details></div>
 </main><script>document.querySelectorAll('[data-copy]').forEach(function(b){b.onclick=function(){
-navigator.clipboard.writeText(document.getElementById(b.dataset.copy).textContent).then(function(){b.textContent='Скопировано'})}})</script>
+navigator.clipboard.writeText(document.getElementById(b.dataset.copy).textContent).then(function(){b.textContent=${JSON.stringify(i18n.tr(lang, 'site.copied')).replace(/</g, '\\u003c')}})}})</script>
 </body></html>`;
 }
 
-function renderStub() {
-  return `${head('Добро пожаловать')}<body><main><div class="card empty">Здесь пока ничего нет.</div></main></body></html>`;
+function renderStub(lang) {
+  return `${head(i18n.tr(lang, 'site.welcome'), lang)}<body><main><div class="card empty">${esc(i18n.tr(lang, 'site.empty'))}</div></main></body></html>`;
 }
 
 const qrSvg = (text) => QRCode.toString(text, { type: 'svg', margin: 1, errorCorrectionLevel: 'M' });
 
 async function buildSite(subs, inventory, entryServer) {
-  const files = { 'index.html': renderStub() };
+  const files = { 'index.html': renderStub(siteLang(subs)) };
   for (const person of subs.people) {
-    if (!TOKEN_RE.test(person.token)) throw new Error(`Некорректный код ссылки у «${person.name}»`);
+    if (!TOKEN_RE.test(person.token)) throw new Error(i18n.t('subs.badToken', { name: person.name }));
     const link = personLink(subs, inventory, entryServer, person);
     const url = happUrl(subs, person.token);
     const [qrSub, qrKey] = link ? await Promise.all([qrSvg(url), qrSvg(link)]) : ['', ''];
@@ -154,7 +160,7 @@ function buildCaddyfile(subs) {
 		header profile-update-interval ${updateHours}
 		header profile-title "${profileTitleHeader(title)}"
 		file_server`;
-  return `# Сгенерировано VPS-VPN Monitor. Ручные правки будут перезаписаны при публикации.
+  return `# Generated by VPS-VPN Monitor. Manual edits are overwritten on every publish.
 ${domain}:${port} {
 	root * /var/www/vpsmon-sub/current
 	tls {

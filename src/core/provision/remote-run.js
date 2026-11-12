@@ -3,6 +3,7 @@
 // Нужно для действий, которые могут оборвать связь: если ПК ходит через этот же VPN,
 // остановка Xray разорвёт соединение, но скрипт всё равно доработает.
 
+const i18n = require('../../i18n');
 const crypto = require('node:crypto');
 
 const delay = (ms) => new Promise((r) => setTimeout(r, ms));
@@ -32,7 +33,7 @@ async function runDetached(connect, server, code, args, { pollMs = 1500, deadlin
   } finally {
     try { transport?.close(); } catch { /* уже закрыт */ }
   }
-  throw new Error('Сервер не сообщил результат. Проверь его состояние в терминале');
+  throw new Error(i18n.t('srvmsg.noResult'));
 }
 
 module.exports = { runDetached };

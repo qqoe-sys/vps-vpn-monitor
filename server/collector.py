@@ -125,7 +125,7 @@ def main():
     parser = argparse.ArgumentParser()
     parser.add_argument('--stats-port', type=int, default=0)
     parser.add_argument('--utc-offset', type=int, default=7)
-    parser.add_argument('--dry-run', action='store_true', help='только показать счётчики')
+    parser.add_argument('--dry-run', action='store_true', help='only print the counters')
     args = parser.parse_args()
 
     tz = timezone(timedelta(hours=args.utc_offset))

@@ -2,6 +2,7 @@
 // Цикл опроса одного сервера. SSH приходит снаружи (параметр connect),
 // поэтому тесты подставляют подделку, а Android сможет подставить свой транспорт.
 
+const i18n = require('../i18n');
 const { buildScript } = require('./remote-script');
 const { parseSnapshot, computeRates, computeKeyRates } = require('./parser');
 const { computeHealth } = require('./health');
@@ -110,7 +111,7 @@ class ServerMonitor {
     const limit = this.limitInfo();
     if (limit && limit.level !== 'ok' && this.state.connection === 'online') {
       const pct = limit.level === 'warn95' ? 95 : 80;
-      health.problems.push({ key: `limit${pct}`, text: `Израсходовано ${limit.percent.toFixed(0)}% лимита трафика` });
+      health.problems.push({ key: `limit${pct}`, text: i18n.t('health.limit', { pct: limit.percent.toFixed(0) }) });
       if (health.level === 'ok') health.level = 'warn';
     }
     return {

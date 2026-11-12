@@ -1,4 +1,5 @@
 'use strict';
+const i18n = require('../../i18n');
 // Собирает конфиг Xray для нового сервера. Здесь нет ни SSH, ни файлов: только данные.
 
 const VISION_FLOW = 'xtls-rprx-vision';
@@ -6,7 +7,7 @@ const PRIVATE_NETS = ['geoip:private', '0.0.0.0/8', '127.0.0.0/8', '169.254.0.0/
 
 function checkPorts(profiles) {
   const ports = profiles.flatMap((p) => [p.xhttpPort, p.visionPort]);
-  if (new Set(ports).size !== ports.length) throw new Error('Один и тот же порт указан дважды');
+  if (new Set(ports).size !== ports.length) throw new Error(i18n.t('val.dupPort'));
 }
 
 function reality(profile) {
@@ -83,7 +84,7 @@ function exitOutbound(exit) {
 function buildEntryConfig({ profiles, statsPort, exit }) {
   checkPorts(profiles);
   const cascade = profiles.find((p) => p.mode === 'cascade');
-  if (cascade && !exit) throw new Error('Для каскада нужен выходной сервер');
+  if (cascade && !exit) throw new Error(i18n.t('val.needExit'));
   const rules = blockRules();
   const outbounds = [{ tag: 'direct', protocol: 'freedom' }, { tag: 'block', protocol: 'blackhole' }];
   if (cascade) {
