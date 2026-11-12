@@ -2,6 +2,40 @@
 // Конфиг Xray для НОВОГО входа, собранный из снимка старого (результат readKeys).
 // Здесь нет ни SSH, ни файлов: только данные.
 const { common, blockRules } = require('../provision/xray-config');
+const { checkPorts } = require('../provision/validate');
+const i18n = require('../../i18n');
+
+// Снимок клиентов приходит со СТАРОГО входа (или из кэша на ПК), а его обычно меняют, когда с ним беда.
+// Взломанный старый вход не должен через этот снимок выполнить команду на новом сервере
+// (порты идут в команды ufw/bash) или подсунуть свои значения в конфиг Xray. Поэтому пропускаем
+// только ожидаемые значения: числа портов, простые теги, известные режимы, настоящие UUID.
+const TAG_RE = /^[A-Za-z0-9_.-]{1,64}$/;
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+const EMAIL_RE = /^[A-Za-z0-9_.@-]{0,64}$/;
+const KEY_NAME_RE = /^[A-Za-z0-9_-]{0,64}$/;
+const NETS = new Set([undefined, null, '', 'tcp', 'raw', 'xhttp']);
+const MODES = new Set([undefined, null, '', 'auto', 'packet-up', 'stream-up', 'stream-one']);
+const FLOWS = new Set([undefined, null, '', 'xtls-rprx-vision']);
+
+function validateInventory(inventory) {
+  const bad = (what) => { throw new Error(i18n.t('repl.badInventory', { what })); };
+  if (!inventory || !Array.isArray(inventory.inbounds) || !Array.isArray(inventory.keys)) bad('structure');
+  for (const ib of inventory.inbounds) {
+    if (!ib || !TAG_RE.test(String(ib.tag))) bad('tag');
+    if (!NETS.has(ib.net)) bad(`net ${ib.tag}`);
+    if (!MODES.has(ib.mode)) bad(`mode ${ib.tag}`);
+    if (!FLOWS.has(ib.flow)) bad(`flow ${ib.tag}`);
+  }
+  for (const k of inventory.keys) {
+    if (!k || !KEY_NAME_RE.test(String(k.name ?? '')) || !Array.isArray(k.entries)) bad('key');
+    for (const e of k.entries) {
+      if (!e || !TAG_RE.test(String(e.tag)) || !UUID_RE.test(String(e.id)) || !EMAIL_RE.test(String(e.email ?? ''))) bad(`key ${k.name}`);
+    }
+  }
+  // Порты — только у inbound с клиентами: именно они уходят в правила ufw и проверки на новом сервере.
+  checkPorts(usedInbounds(inventory).map((ib) => ib.port));
+}
+
 
 // Клиенты одного inbound по тегу: у одного имени ключа на разных inbound могут быть разные UUID,
 // а если ключа на этом inbound не было — записи просто нет (пустых не создаём).
@@ -78,4 +112,4 @@ function buildReplacementConfig({ inventory, link, exitHost, reality, xhttpPath,
   };
 }
 
-module.exports = { buildReplacementConfig, usedInbounds };
+module.exports = { buildReplacementConfig, usedInbounds, validateInventory };

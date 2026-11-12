@@ -23,7 +23,10 @@ async function xrayState(connect, server) {
   let transport;
   try {
     transport = await connect(server);
-    return (await transport.exec('systemctl is-active xray', 8000)).trim();
+    // Состояние и счётчик перезапусков: в цикле падений служба бывает «active», но счётчик растёт.
+    const [state, restarts] = (await transport.exec('systemctl is-active xray; systemctl show xray -p NRestarts --value', 8000))
+      .trim().split(/\r?\n/).map((s) => s.trim());
+    return { state, restarts: restarts ?? null };
   } catch {
     return null; // связи пока нет, это нормально сразу после перезапуска
   } finally {
@@ -36,9 +39,21 @@ async function restartXray(connect, server, timing = DEFAULT_TIMING) {
   await delay(timing.firstCheckMs);
   const deadline = Date.now() + timing.deadlineMs;
   let state = null;
+  // Нужно несколько «active» подряд без роста счётчика перезапусков: одиночный active
+  // в цикле падений — ложный успех.
+  let streak = 0;
+  let base = null;
   while (Date.now() < deadline) {
-    state = await xrayState(connect, server);
-    if (state === 'active') return;
+    const cur = await xrayState(connect, server);
+    state = cur?.state ?? null;
+    if (state === 'active' && (streak === 0 || cur.restarts === base)) {
+      if (streak === 0) base = cur.restarts;
+      streak += 1;
+    } else {
+      streak = state === 'active' ? 1 : 0;
+      base = cur?.restarts ?? null;
+    }
+    if (streak >= (timing.stableChecks ?? 3)) return;
     await delay(timing.retryMs);
   }
   throw new Error(i18n.t('act.xrayNotStarted', { state: state ?? i18n.t('health.noAnswer') }));

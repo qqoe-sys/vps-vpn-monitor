@@ -28,6 +28,7 @@ function files(dir, re) {
 const CODE = [
   ...files(path.join(ROOT, 'src'), /\.(js|py|html)$/),
   ...files(path.join(ROOT, 'server'), /\.(py|sh)$/),
+  ...files(path.join(ROOT, 'tools'), /\.(js|py)$/),
 ].filter((p) => !p.includes(`${path.sep}i18n${path.sep}`));
 
 const placeholders = (s) => [...s.matchAll(/\{(\w+)\}/g)].map((m) => m[1]).sort();
@@ -113,6 +114,67 @@ test('в коде не осталось русских строк вне сло�
     });
   }
   assert.deepStrictEqual(found, []);
+});
+
+// Вторая, независимая проверка: кириллица внутри самих строковых литералов. Она ловит строку,
+// в которой после «//» или «#» стоит русский текст (первая проверка приняла бы его за комментарий).
+test('в строковых литералах кода нет кириллицы', () => {
+  const found = [];
+  const LITERAL = /'(?:[^'\\\n]|\\.)*'|"(?:[^"\\\n]|\\.)*"|`(?:[^`\\]|\\.)*`/g;
+  for (const file of CODE.filter((f) => /\.(js|py)$/.test(f))) {
+    let text = fs.readFileSync(file, 'utf8').replace(/\r\n/g, '\n');
+    if (file.endsWith('.py')) text = text.replace(/"""[\s\S]*?"""/g, '');
+    // Целые строки-комментарии убираем: в них бывают апострофы, которые сбили бы разбор литералов.
+    text = text.split('\n').map((l) => (/^\s*(\/\/|#|\*|\/\*)/.test(l) ? '' : l)).join('\n')
+      .replace(/\/\*[\s\S]*?\*\//g, '');
+    for (const m of text.matchAll(LITERAL)) {
+      if (/[Ѐ-ӿ]/.test(m[0].replace(/Русский/g, ''))) {
+        const line = text.slice(0, m.index).split('\n').length;
+        found.push(`${path.relative(ROOT, file)}:${line}: ${m[0].slice(0, 80)}`);
+      }
+    }
+  }
+  assert.deepStrictEqual(found, []);
+});
+
+test('в английском словаре нет кириллицы (кроме названия языка «Русский»)', () => {
+  const bad = Object.entries(en).filter(([k, v]) => k !== 'lang.ru' && /[Ѐ-ӿ]/.test(v));
+  assert.deepStrictEqual(bad, []);
+});
+
+// Вызов t('ключ', { a, b }) должен передать все подстановки, которые есть в строке словаря,
+// иначе пользователь увидит «?» вместо значения.
+test('вызовы t() передают все подстановки из словаря', () => {
+  const problems = [];
+  const CALL = /\bt\(\s*'([\w.]+)'\s*,\s*\{([^{}]*)\}/g;
+  for (const file of CODE.filter((f) => f.endsWith('.js'))) {
+    const text = fs.readFileSync(file, 'utf8');
+    for (const m of text.matchAll(CALL)) {
+      if (!(m[1] in ru)) continue;
+      const given = m[2].split(',').map((part) => part.split(':')[0].trim()).filter(Boolean);
+      const missing = placeholders(ru[m[1]]).filter((p) => !given.includes(p));
+      if (missing.length) problems.push(`${path.relative(ROOT, file)}: ${m[1]} без {${missing.join('}, {')}}`);
+    }
+  }
+  assert.deepStrictEqual(problems, []);
+});
+
+// Серверный скрипт печатает @E:код|арг0|арг1 — число аргументов должно совпадать со словарём.
+test('коды @E в серверных скриптах печатаются с нужным числом аргументов', () => {
+  const problems = [];
+  for (const file of CODE.filter((f) => /\.(py|sh|js)$/.test(f))) {
+    const text = fs.readFileSync(file, 'utf8');
+    // Аргумент может быть подстановкой shell вида $(команда с пробелами).
+    for (const m of text.matchAll(/@E:([a-z0-9_]+)((?:\|(?:\$\([^)]*\)|[^'"\s|])*)*)/g)) {
+      const key = `srv.${m[1]}`;
+      if (!(key in ru)) continue;
+      const want = new Set(placeholders(ru[key])).size;
+      const got = m[2] ? m[2].split('|').length - 1 : 0;
+      // В JS-шаблонах коды встречаются и без аргументов (например, в описании формата) — проверяем только явные.
+      if (got !== want && !(got === 0 && file.endsWith('.js'))) problems.push(`${path.relative(ROOT, file)}: @E:${m[1]} — ${got} арг., нужно ${want}`);
+    }
+  }
+  assert.deepStrictEqual(problems, []);
 });
 
 test('настройки: язык сохраняется, мусор в файле не мешает', () => {

@@ -14,7 +14,7 @@ const ROOT = path.join(__dirname, '..');
 const config = JSON.parse(fs.readFileSync(path.join(ROOT, 'config/servers.json'), 'utf8'));
 const server = config.servers.find((s) => s.id === process.argv[2]);
 if (!server) {
-  console.error(`Укажи сервер: ${config.servers.map((s) => s.id).join(', ')}`);
+  console.error(`Specify a server: ${config.servers.map((s) => s.id).join(', ')}`);
   process.exit(1);
 }
 
@@ -34,7 +34,7 @@ const result = spawnSync('ssh', [
   `${server.user}@${server.host}`, 'bash -s',
 ], { input: collectorInstallScript(server, localHistory()), encoding: 'utf8', timeout: 60000 });
 
-console.log(result.stdout);
+console.log(require('../src/i18n').translateServer(result.stdout));
 if (result.stderr) console.error(result.stderr);
-console.log(result.status === 0 ? `Готово: ${server.name}` : `Ошибка установки: ${server.name}`);
+console.log(result.status === 0 ? `Done: ${server.name}` : `Install failed: ${server.name}`);
 process.exit(result.status === 0 ? 0 : 1);

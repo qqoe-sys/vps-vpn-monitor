@@ -2,9 +2,15 @@
 // Мастер добавления сервера и окна администрирования (лимит, удаление, повторное подключение).
 // Использует esc, $, servers, ui, showLinks и другие функции из app.js.
 
-const wizard = { running: false, mode: 'single', entry: 0, steps: [], error: null, keys: null, sni: null, replaceId: null, subs: null };
+const wizard = { running: false, mode: 'single', entry: 0, steps: [], error: null, incomplete: false, keys: null, sni: null, replaceId: null, subs: null };
 
 const value = (form, name) => form.elements[name].value.trim();
+
+// «Прошлая установка не завершена» запоминаем флагом сразу при ошибке: текст ошибки на языке
+// момента сбоя, и после смены языка сравнение по тексту перестало бы срабатывать.
+function markIncomplete() {
+  wizard.incomplete = String(wizard.error ?? '').includes(t('prov.incomplete'));
+}
 const num = (form, name) => Number(value(form, name));
 
 function serverFields(n, label) {
@@ -37,7 +43,7 @@ function replaceForm() {
         <label>${t('setup.resetDay')}<input name="resetDay" type="number" min="1" max="31" value="${esc(day)}" required></label>
       </div>
     </fieldset>
-    ${wizard.error?.includes(t('prov.incomplete')) ? `<label class="setup-clean"><input type="checkbox" name="clean" checked> ${t('setup.cleanRetry')}</label>` : ''}
+    ${wizard.incomplete ? `<label class="setup-clean"><input type="checkbox" name="clean" checked> ${t('setup.cleanRetry')}</label>` : ''}
     <p class="note">${t('setup.checksNote')}</p>
     <button class="btn setup-start">${t('setup.replaceBtn')}</button>
   </form>`;
@@ -65,7 +71,7 @@ function setupForm() {
         ${both ? `${portField(t('setup.singleXhttp'), 'xhttp2', 2053)}${portField(t('setup.singleVision'), 'vision2', 2083)}` : ''}
         ${two ? portField(t('setup.exitPort'), 'exitPort', 443) : ''}
       </div></fieldset>
-    ${wizard.error?.includes(t('prov.incomplete')) ? `<label class="setup-clean"><input type="checkbox" name="clean" checked> ${t('setup.cleanRetry')}</label>` : ''}
+    ${wizard.incomplete ? `<label class="setup-clean"><input type="checkbox" name="clean" checked> ${t('setup.cleanRetry')}</label>` : ''}
     <p class="note">${t('setup.passKept')} ${t('setup.checksNote')}</p>
     <button class="btn setup-start">${t('setup.start')}</button>
   </form>`;
@@ -97,7 +103,7 @@ function buildPlan(form) {
 const STEP_ICON = { run: '…', ok: '✓', fail: '✕', undo: '↩', 'undo-failed': '!' };
 
 function setupProgress() {
-  const steps = wizard.steps.map((s) => `<li class="step ${s.state}"><span>${STEP_ICON[s.state] ?? ''}</span> ${esc(s.title)}${s.detail ? `<small>${esc(s.detail)}</small>` : ''}</li>`).join('');
+  const steps = wizard.steps.map((s) => `<li class="step ${s.state}"><span>${STEP_ICON[s.state] ?? ''}</span> ${escMsg(s.title)}${s.detail ? `<small>${escMsg(s.detail)}</small>` : ''}</li>`).join('');
   const sni = wizard.sni ? `<div class="setup-box"><b>${esc(t('setup.sniPick', { host: wizard.sni.host }))}</b>
     ${wizard.sni.list.length ? wizard.sni.list.map((x, i) => `<label class="sni-row"><input type="radio" name="sni" value="${esc(x.domain)}" ${i === 0 ? 'checked' : ''}> ${esc(x.domain)} <small>${esc(t('setup.ms', { ms: x.ms }))}</small></label>`).join('') : `<p class="empty">${t('setup.sniNone')}</p>`}
     <label class="sni-row">${t('setup.sniCustom')} <input id="sni-custom" autocomplete="off"></label>
@@ -106,9 +112,9 @@ function setupProgress() {
 }
 
 function setupResult() {
-  if (wizard.error) return `<p class="key-msg error">${esc(t('setup.stopped', { err: wizard.error }))}</p>`;
+  if (wizard.error) return `<p class="key-msg error">${escMsg(t('setup.stopped', { err: wizard.error }))}</p>`;
   if (!wizard.keys) return '';
-  const subsNote = wizard.subs?.message ? `<p class="key-msg subs-note ${wizard.subs.error ? 'error' : ''}">${esc(wizard.subs.message)}</p>` : '';
+  const subsNote = wizard.subs?.message ? `<p class="key-msg subs-note ${wizard.subs.error ? 'error' : ''}">${escMsg(wizard.subs.message)}</p>` : '';
   const title = `✓ ${t(wizard.replaceId ? 'setup.replaced' : 'setup.added')}`;
   return `<p class="status ok">${title}</p>${subsNote}
     ${wizard.keys.length ? `<table><tbody>${wizard.keys.map((k, i) => `<tr><td>${esc(k.server)}</td><td>${esc(k.name)}</td><td class="key-actions"><button class="btn" data-setup-key="${i}">${t('setup.linksQr')}</button></td></tr>`).join('')}</tbody></table>` : ''}
@@ -144,7 +150,7 @@ async function submitReplace(form) {
     // Галочка появляется, только если прошлая попытка остановилась на «установка не завершена».
     cleanIncomplete: Boolean(form.elements.clean?.checked),
   };
-  Object.assign(wizard, { running: true, steps: [], error: null, keys: null, sni: null, subs: null });
+  Object.assign(wizard, { running: true, steps: [], error: null, incomplete: false, keys: null, sni: null, subs: null });
   form.reset(); // пароль не остаётся в поле
   renderSetup();
   try {
@@ -153,8 +159,10 @@ async function submitReplace(form) {
       wizard.keys = result.keys;
       wizard.subs = result.subs ?? null;
     } else wizard.error = result.cancelled ? t('common.cancelled') : result.error;
+    markIncomplete();
   } catch (err) {
     wizard.error = cleanError(err);
+    markIncomplete();
   }
   wizard.running = false;
   wizard.sni = null;
@@ -164,7 +172,7 @@ async function submitReplace(form) {
 // «Заменить вход» на карточке: открываем мастер в режиме replace.
 function startReplace(oldId) {
   if (wizard.running) return;
-  Object.assign(wizard, { replaceId: oldId, steps: [], error: null, keys: null, sni: null, subs: null });
+  Object.assign(wizard, { replaceId: oldId, steps: [], error: null, incomplete: false, keys: null, sni: null, subs: null });
   setView('setup');
 }
 
@@ -184,15 +192,17 @@ document.addEventListener('submit', async (e) => {
   e.preventDefault();
   if (wizard.running) return;
   const plan = buildPlan(e.target);
-  Object.assign(wizard, { running: true, steps: [], error: null, keys: null, sni: null });
+  Object.assign(wizard, { running: true, steps: [], error: null, incomplete: false, keys: null, sni: null });
   e.target.reset(); // пароль не остаётся в поле
   renderSetup();
   try {
     const result = await window.api.provisionStart(plan);
     if (result.ok) wizard.keys = result.keys;
     else wizard.error = result.error;
+    markIncomplete();
   } catch (err) {
     wizard.error = cleanError(err);
+    markIncomplete();
   }
   wizard.running = false;
   wizard.sni = null;
@@ -365,7 +375,7 @@ async function handleServerAdminClick(d) {
     showLinks(t('keys.keyTitle', { name: k.name }), k.links);
   }
   if ('setupReset' in d) {
-    Object.assign(wizard, { steps: [], error: null, keys: null, sni: null, replaceId: null, subs: null });
+    Object.assign(wizard, { steps: [], error: null, incomplete: false, keys: null, sni: null, replaceId: null, subs: null });
     renderSetup();
   }
 }

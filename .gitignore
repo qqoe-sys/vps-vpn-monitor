@@ -7,7 +7,7 @@ out/
 
 # Личные данные: список серверов, ключи, подписки (в репозиторий НЕ попадают)
 config/servers.json
-config/*.local.json
+*.local.json
 *.pem
 *.key
 *_ed25519
@@ -28,7 +28,7 @@ inventory-cache.json
 __pycache__/
 *.pyc
 
-# Редакторы и ИИ-ассистенты
+# Локальные настройки редакторов и инструментов
 .vscode/
 .idea/
 .claude/
@@ -38,3 +38,4 @@ __pycache__/
 # Windows
 Thumbs.db
 desktop.ini
+/settings.json

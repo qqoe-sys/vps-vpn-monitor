@@ -300,7 +300,7 @@ test('перезапуск Xray: команда отвязана от сесси
   const { restartXray, rebootServer } = require('../src/core/server-actions');
   const timing = { firstCheckMs: 1, retryMs: 1, deadlineMs: 30 };
   const commands = [];
-  const replies = [null, 'activating\n', 'active\n'];
+  const replies = [null, 'activating\n', 'active\n0\n', 'active\n0\n', 'active\n0\n'];
   const fakeConnect = (next) => async () => ({
     exec: async (cmd) => {
       commands.push(cmd);
@@ -316,6 +316,9 @@ test('перезапуск Xray: команда отвязана от сесси
   await restartXray(fakeConnect(() => replies.shift()), SERVER, timing);
   assert.match(commands[0], /setsid nohup .*systemctl restart xray/);
   await assert.rejects(restartXray(fakeConnect(() => 'failed\n'), SERVER, timing), /не запустился \(состояние: failed/);
+  // Цикл падений: каждый раз active, но счётчик перезапусков растёт — это не успех.
+  let n = 0;
+  await assert.rejects(restartXray(fakeConnect(() => `active\n${n++}\n`), SERVER, timing), /не запустился/);
   commands.length = 0;
   await rebootServer(fakeConnect(() => ''), SERVER);
   assert.match(commands[0], /setsid nohup .*systemctl reboot/);

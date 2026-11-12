@@ -152,7 +152,7 @@ def main():
             write(CADDYFILE, old_caddy)
             run(SYSTEMCTL, 'reload', 'caddy')
             shutil.rmtree(target, ignore_errors=True)
-            done(ok=False, error='@E:caddy_rejected|' + last_line(r))
+            done(ok=False, error='@E:caddy_rejected|' + last_line(r).replace('|', '/'))
 
     switch_current(target)
     open_port(port)

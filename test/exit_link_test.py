@@ -18,7 +18,7 @@ def exit_cfg():
         {'tag': 'inbound-443', 'protocol': 'vless', 'port': 443,
          'settings': {'clients': [{'id': 'LINK-UUID', 'flow': 'xtls-rprx-vision', 'email': 'link'}], 'decryption': 'none'},
          'streamSettings': {'network': 'tcp', 'security': 'reality',
-                            'realitySettings': {'dest': 'www.bmw.de:443', 'serverNames': ['www.bmw.de'],
+                            'realitySettings': {'dest': 'exit-mask.example.org:443', 'serverNames': ['exit-mask.example.org'],
                                                 'privateKey': 'PRIV', 'shortIds': ['ab', 'cd']}}},
     ]}
 
@@ -27,7 +27,7 @@ class LinkParams(unittest.TestCase):
     def test_vpsg(self):
         p = exitlink.link_params(exit_cfg())
         self.assertEqual(p, {'port': 443, 'uuid': 'LINK-UUID', 'flow': 'xtls-rprx-vision',
-                             'shortId': 'ab', 'sni': 'www.bmw.de', 'network': 'tcp', 'privateKey': 'PRIV'})
+                             'shortId': 'ab', 'sni': 'exit-mask.example.org', 'network': 'tcp', 'privateKey': 'PRIV'})
 
     def test_no_flow_is_empty_string(self):
         cfg = exit_cfg()

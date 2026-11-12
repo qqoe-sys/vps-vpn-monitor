@@ -11,8 +11,11 @@ const $ = (id) => document.getElementById(id);
 const { t } = window.I18N;
 
 // Имена ключей и ошибки приходят извне, поэтому экранируем всё, что вставляем в HTML.
-// Заодно переводим коды серверных скриптов (@E:...) в текст текущего языка.
-const esc = (v) => window.I18N.translateServer(String(v ?? '')).replace(/[&<>"']/g, (c) => `&#${c.charCodeAt(0)};`);
+const esc = (v) => String(v ?? '').replace(/[&<>"']/g, (c) => `&#${c.charCodeAt(0)};`);
+// Сообщения об ошибках и ходе работы: коды серверных скриптов (@E:...) переводим в текст текущего языка.
+// Только для сообщений: в обычных данных (имена ключей, названия) коды НЕ переводим, иначе сервер
+// смог бы выдать своё имя ключа за «официальное» сообщение программы.
+const escMsg = (v) => esc(window.I18N.translateServer(String(v ?? '')));
 
 const STATUS = {
   ok: ['✓', 'status.ok'],
@@ -46,7 +49,8 @@ function formatUptime(sec) {
 
 function cleanError(err) {
   // Electron добавляет к ошибке служебный префикс про IPC.
-  return String(err.message).replace(/^Error invoking remote method '[^']+': (Error: )?/, '');
+  // Ошибка — это сообщение, поэтому сразу переводим коды серверных скриптов.
+  return window.I18N.translateServer(String(err.message).replace(/^Error invoking remote method '[^']+': (Error: )?/, ''));
 }
 
 function statusBadge(level, label) {
@@ -136,7 +140,7 @@ function serverDetail(s) {
       <button class="btn danger" data-forget="${esc(s.id)}" ${busy}>${t('ov.forget')}</button>` : ''}
       ${s.managed && s.connection === 'offline' && !s.replacedBy ? `<button class="btn" data-forget="${esc(s.id)}">${t('ov.forgetOffline')}</button>` : ''}
     </div>
-    <p class="key-msg ${msg?.error ? 'error' : ''}">${esc(msg?.text ?? '')}</p>
+    <p class="key-msg ${msg?.error ? 'error' : ''}">${escMsg(msg?.text ?? '')}</p>
   </div>`;
 }
 
@@ -322,7 +326,7 @@ function keysTable(tr) {
         <button class="btn" data-key-delete="${esc(u.name)}" data-server="${server}">${t('common.delete')}</button>` : ''}</td>
     </tr>`;
   }).join('')}
-  </tbody></table>${names?.error ? `<p class="key-msg error">${esc(names.error)}</p>` : ''}`;
+  </tbody></table>${names?.error ? `<p class="key-msg error">${escMsg(names.error)}</p>` : ''}`;
 }
 
 function exitBlock(exit) {
@@ -359,7 +363,7 @@ function renderKeysView() {
         ${tr.modes.length > 1 ? `<select name="profile" aria-label="${t('keys.mode')}">${tr.modes.map((m) => `<option value="${esc(m)}">${t(m === 'cascade' ? 'keys.modeCascade' : 'keys.modeSingle')}</option>`).join('')}</select>` : ''}
         <button class="btn" ${keyBusy.has(tr.id) ? 'disabled' : ''}>${t('keys.add')}</button>
       </form>
-      <p class="key-msg ${msg?.error ? 'error' : ''}">${esc(msg?.text ?? '')}</p>
+      <p class="key-msg ${msg?.error ? 'error' : ''}">${escMsg(msg?.text ?? '')}</p>
       ${keysTable(tr)}
       ${exit ? `<p class="exit-toggle"><button class="btn" data-toggle-exit>${esc(t(ui.showExit ? 'keys.hideExit' : 'keys.showExit', { name: exit.name }))}</button></p>${ui.showExit ? exitBlock(exit) : ''}` : ''}
     </article>
@@ -645,11 +649,29 @@ function applyStaticTexts() {
 
 // Смена языка без перезапуска: главный процесс запоминает выбор, окно перерисовывается.
 $('lang-select').addEventListener('change', async (e) => {
-  I18N.setLang(await window.api.setLang(e.target.value));
+  let chosen;
+  try {
+    chosen = await window.api.setLang(e.target.value);
+  } catch {
+    e.target.value = I18N.getLang(); // не сохранилось — остаёмся на прежнем языке и в окне, и в main
+    return;
+  }
+  // Введённое в формах (например, в мастере добавления сервера) не должно пропасть при перерисовке.
+  const view = $(ui.view);
+  const saved = [...(view?.querySelectorAll('input, select, textarea') ?? [])]
+    .filter((el) => el.name).map((el) => [el.name, el.type === 'checkbox' || el.type === 'radio' ? el.checked : el.value, el.value]);
+  I18N.setLang(chosen);
   applyStaticTexts();
   renderSide();
   renderTermBar();
   setView(ui.view);
+  for (const [name, val, raw] of saved) {
+    for (const el of view?.querySelectorAll(`[name="${CSS.escape(name)}"]`) ?? []) {
+      if (el.type === 'checkbox') el.checked = val;
+      else if (el.type === 'radio') { if (el.value === raw) el.checked = val; }
+      else el.value = val;
+    }
+  }
 });
 
 (async () => {

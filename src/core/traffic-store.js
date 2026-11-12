@@ -5,6 +5,7 @@
 
 const fs = require('node:fs');
 const path = require('node:path');
+const { parseSafe } = require('./safe-json');
 
 const SERVER_KEY = '__server__'; // запись для общего трафика сетевого интерфейса
 const KEEP_DAYS = 400;
@@ -157,7 +158,7 @@ function dayRange(days, now, since) {
 
 function loadStore(file) {
   try {
-    return new TrafficStore(JSON.parse(fs.readFileSync(file, 'utf8')));
+    return new TrafficStore(parseSafe(fs.readFileSync(file, 'utf8')));
   } catch (err) {
     if (err.code !== 'ENOENT') {
       // Битый файл не затираем, а откладываем в сторону.

@@ -1,5 +1,6 @@
 'use strict';
 const i18n = require('../i18n');
+const { isSafeKey, parseSafe } = require('./safe-json');
 // Превращает текстовый вывод remote-script.js в обычный объект с числами.
 // Здесь нет ни SSH, ни Electron, поэтому модуль легко тестировать.
 
@@ -101,7 +102,7 @@ function parseStats(lines) {
   const users = {};
   for (const entry of payload.stat) {
     const p = String(entry.name).split('>>>');
-    if (p.length !== 4 || p[0] !== 'user' || p[2] !== 'traffic') continue;
+    if (p.length !== 4 || p[0] !== 'user' || p[2] !== 'traffic' || !isSafeKey(p[1])) continue;
     const u = (users[p[1]] ??= { up: 0, down: 0 });
     // Xray не присылает поле value, когда счётчик равен нулю.
     const value = Number(entry.value ?? 0);
@@ -121,7 +122,7 @@ function parseLink(lines) {
 function parseTrafficStore(lines) {
   if (!lines) return undefined;
   try {
-    const data = JSON.parse(lines.join('\n'));
+    const data = parseSafe(lines.join('\n'));
     return data && data.counters && data.days ? data : null;
   } catch {
     return null;

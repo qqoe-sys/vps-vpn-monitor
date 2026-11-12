@@ -1,7 +1,7 @@
 {
   "name": "vps-vpn-monitor",
   "productName": "VPS-VPN Monitor",
-  "version": "0.2.0",
+  "version": "0.2.1",
   "description": "Настольное приложение для Windows: настройка и мониторинг VPS с Xray, каскад вход → выход и замена входного сервера без смены выходного IP",
   "author": "qqoe-sys",
   "license": "MIT",
@@ -44,7 +44,10 @@
       "config/servers.default.json",
       "package.json",
       "LICENSE",
-      "THIRD-PARTY-NOTICES.md"
+      "THIRD-PARTY-NOTICES.md",
+      "!node_modules/cpu-features/**",
+      "!node_modules/buildcheck/**",
+      "!node_modules/nan/**"
     ],
     "npmRebuild": false,
     "win": {
@@ -59,7 +62,18 @@
       "createStartMenuShortcut": true,
       "shortcutName": "VPS-VPN Monitor",
       "artifactName": "VPS-VPN-Monitor-Setup-${version}.${ext}",
-      "license": "LICENSE"
-    }
+      "license": "LICENSE",
+      "packElevateHelper": false
+    },
+    "extraFiles": [
+      {
+        "from": "LICENSE",
+        "to": "LICENSE.txt"
+      },
+      {
+        "from": "THIRD-PARTY-NOTICES.md",
+        "to": "THIRD-PARTY-NOTICES.md"
+      }
+    ]
   }
 }

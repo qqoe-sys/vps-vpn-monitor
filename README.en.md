@@ -99,7 +99,7 @@ with the **same keys (UUIDs) and names**, and connects it to the **same exit**:
 | What | Why |
 |---|---|
 | Windows 11 x64 | the app is built for Windows only |
-| ~300 MB of disk space | the app (Electron) |
+| ~370 MB of disk space | the app (Electron) |
 | SSH access to the servers (port 22) | the app talks to servers over SSH only |
 
 **Nothing else is needed to install from the .exe** — no Node.js, Python or Git on your PC.
@@ -139,7 +139,7 @@ use the Vision keys for them.
    [Releases](https://github.com/qqoe-sys/vps-vpn-monitor/releases) page.
 2. Compare the checksum with the one in the release (PowerShell):
    ```powershell
-   Get-FileHash .\VPS-VPN-Monitor-Setup-0.2.0.exe -Algorithm SHA256
+   Get-FileHash .\VPS-VPN-Monitor-Setup-0.2.1.exe -Algorithm SHA256
    ```
 3. Run the installer. It is not code-signed, so SmartScreen shows
    "Windows protected your PC" → **More info** → **Run anyway**.
